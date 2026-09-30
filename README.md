@@ -1,5 +1,7 @@
 # FlowCraft
 
+*[Deutsche Anleitung lesen](README.de.md)*
+
 A visual, Node-RED-style flow editor for Home Assistant, built as a single Lovelace custom card. Design your automation logic on a canvas — drag triggers, conditions and actions, wire them together — and FlowCraft compiles it into a native Home Assistant automation (or, for Alexa voice commands, a native HA script). No YAML required, and nothing runs through a separate add-on: the compiled result is a plain automation/script that lives entirely in your own Home Assistant configuration.
 
 ## Features
@@ -47,11 +49,96 @@ The card takes up the full available height and needs no further configuration �
 4. Click **🔍 Simulieren** to dry-run the logic against your current entity states (nothing is actually sent to any device).
 5. Click **Deploy** to compile and push the flow as a real Home Assistant automation (or script, for a voice-command trigger).
 
-See the palette for all available trigger/condition/action node types — motion, state changes, numeric thresholds, time, sun position, buttons/remotes, zones, calendar events, and Alexa voice commands on the trigger side; brightness/dark checks, state/numeric comparisons, sun position, time windows, weekdays, AND/OR combinations, and Jinja templates on the condition side; device on/off/toggle, delays, notifications (persistent + mobile push), helper value-setting, scenes, scripts, covers, and repeat loops on the action side.
+### Triggers ("Wenn")
+
+| Node | What it does | Key fields |
+|---|---|---|
+| 🚶 Motion | Fires when a motion/occupancy/presence sensor turns on/off | sensor, on/off, minimum duration |
+| 🔀 State changes | Fires on any state change of an entity | entity, optional from/to state, minimum duration |
+| 📈 Numeric threshold | Fires when a numeric value crosses above/below a threshold | sensor, above/below |
+| ⏰ Time | Fires daily at a fixed time | time |
+| 📅 Time + weekday | Like Time, but only on selected weekdays | time, weekdays |
+| 🌅 Sun | Fires at sunrise/sunset (± offset in minutes) | event, offset |
+| 🔘 Button/remote | Fires on a button-press event entity (e.g. a Zigbee remote) | event entity, event type |
+| 📍 Zone enter/leave | Fires when a person enters/leaves a zone | person, zone, event |
+| 📆 Calendar event | Fires when a calendar event starts/ends (optionally filtered by title) | calendar, event, offset, title filter |
+| 🗣️ Alexa voice command | Produces **no** automation trigger — instead a standalone HA **script** that Alexa can call directly by name | name for Alexa (e.g. "Bedroom light on") |
+
+A flow can contain several trigger nodes at once — each fires the flow (or its own branch) independently.
+
+> ⚠️ **Alexa voice command has no on/off state of its own.** The generated script always runs its connected action chain exactly once, top to bottom. Home Assistant reports a script to Alexa as a scene, and a scene can only be *activated*, never turned off — so "Alexa, turn off X" gets acknowledged by Alexa but triggers nothing in Home Assistant. For real on/off control by voice, add two separate Alexa voice command nodes with different names (e.g. "Bedroom light on" → turn on, "Bedroom light off" → turn off). FlowCraft automatically exposes/un-exposes each script to Alexa on deploy/delete — no manual toggle needed under Settings → Voice assistants → Alexa.
+
+### Conditions ("Falls")
+
+| Node | What it checks |
+|---|---|
+| 🌙 Is it dark? | Illuminance sensor below a threshold (with sun elevation as a fallback if the sensor is unavailable) |
+| ❓ State is | Entity has a given state (comma-separated list for multiple) |
+| 🔢 Numeric comparison | A numeric value/attribute is above/below a threshold |
+| ☀️ Sun position | Current time is before/after sunrise/sunset (± offset) |
+| 🕒 Time window | Current time is between two times |
+| 📅 Weekday | Today is one of the selected weekdays |
+| 📍 Zone is | A person is currently in a given zone |
+| 🔗 AND/OR | Combines up to 4 entity/state pairs with AND or OR |
+| 🧩 Template | Advanced: a custom Jinja template that must evaluate to true/false |
+
+Every condition has two outputs: top = "yes", bottom = "no". Leave the bottom output unconnected and nothing happens on "no".
+
+### Actions ("Dann")
+
+| Node | What it does |
+|---|---|
+| 💡 Device on/off/toggle | Switches a light/switch/etc. on, off or toggles it (optional brightness % for lights) |
+| ⏳ Delay | Waits the given time before continuing |
+| 🔔 Notification | Calls any notification service (default: HA's built-in `persistent_notification`) |
+| 🎚️ Set value | Sets a helper value (`input_number`, `input_text`, `input_select`, `input_boolean`, `number`) |
+| 🎬 Activate scene | Activates an existing HA scene |
+| 📜 Run script | Runs an existing HA script |
+| 🪟 Cover | Open/close/stop/set position for covers (blinds, awnings, etc.) |
+| 📱 Push notification | Sends a push notification to a phone running the Home Assistant Companion App |
+| 🔁 Repeat | Repeats everything downstream N times |
 
 ### Optional: filtering by integration
 
-Click **⚙ Integrationen** to choose which of your installed integrations should populate the entity pickers. Useful on larger installations where you only want to build flows against certain devices.
+Click **⚙ Integrationen** to choose which of your installed integrations should populate the entity pickers. Useful on larger installations where you only want to build flows against certain devices. This is a display-only filter — it doesn't disable anything, it just narrows the dropdown lists.
+
+### Keyboard shortcuts
+
+| Shortcut | Effect |
+|---|---|
+| Ctrl/Cmd + Z | Undo |
+| Ctrl/Cmd + C | Copy selected nodes |
+| Ctrl/Cmd + V | Paste |
+| Delete / Backspace | Delete selected nodes (canvas focused) |
+
+### Prerequisites per node type
+
+FlowCraft itself needs nothing beyond installation — it only uses Home Assistant's own building blocks (automations, scripts, the entity registry). Individual nodes, though, need the matching integration/hardware, otherwise their entity picker simply stays empty:
+
+| Node(s) | Requirement in Home Assistant |
+|---|---|
+| Motion, State changes, Numeric threshold, Numeric comparison, Is it dark? | A sensor/binary_sensor with the matching `device_class` (motion/occupancy/presence or illuminance) — typically via Zigbee (ZHA/Zigbee2MQTT/deCONZ), Z-Wave, Wi-Fi devices, Shelly, etc. |
+| Device on/off/toggle | A controllable entity (`light`, `switch`, `fan`, `climate`, …) via any integration |
+| Cover | A `cover` entity via the relevant integration |
+| Zone enter/leave, Zone is | At least one **person** (`person.*`) with location tracking enabled (the Home Assistant Companion App or a device tracker), and at least one **zone** (`zone.*` — "home" always exists) |
+| Calendar event | A calendar integration (e.g. Google Calendar, CalDAV, local calendar) so `calendar.*` entities exist |
+| Activate scene | At least one scene (`scene.*`) already created in HA |
+| Run script | At least one existing script (`script.*`) |
+| Push notification | The Home Assistant Companion App on at least one phone, connected to your instance (provides the `notify.mobile_app_…` services) |
+| Set value | A matching helper (`input_number`, `input_text`, `input_select`, `input_boolean`) or a `number` entity — create helpers under Settings → Devices & Services → Helpers |
+| Alexa voice command | Home Assistant connected to Alexa, most easily via **Home Assistant Cloud (Nabu Casa)**. FlowCraft handles exposing the script to Alexa automatically on every deploy. |
+
+If the required integration/hardware is missing, the affected node simply shows no matching entities, or appears greyed out with a ⚠ in the palette.
+
+### Troubleshooting
+
+| Message/situation | Meaning | Fix |
+|---|---|---|
+| "Kein Ausloeser ist mit einer Aktion verbunden" | No unbroken connection from a trigger to an action | Wire the nodes together |
+| "Schleife im Flow bei …" | The wires form a cycle (A → B → A) | Remove the connection that closes the loop |
+| "… veraltete(r) Node(s) mit unbekanntem Typ entfernt" | A node type used previously no longer exists in the card | Rebuild the affected part of the flow |
+| "Deploy fehlgeschlagen: …" | Home Assistant rejected the automation/script (usually an invalid entity) | Read the error message, check the field it points to |
+| "Bitte zuerst Deploy klicken …" (on Test) | The flow hasn't been deployed yet | Deploy first, then Test |
 
 ## How it works
 
