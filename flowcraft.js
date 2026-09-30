@@ -1,29 +1,9 @@
 // ============================================================
-// FlowCraft - Node-RED-artiger Flow-Editor fuer Home Assistant
-// Dies ist die eigenstaendige OEFFENTLICHE Veroeffentlichungsversion, komplett
-// getrennt von Roberts persoenlicher Arbeitsversion (siehe /home/claude/work/
-// ikea-flow-editor.js bzw. Projekt-Dokument) - Aenderungen hier werden NICHT
-// automatisch dorthin uebernommen und umgekehrt. Der Name "FlowCraft" wird
-// konsequent ueberall verwendet: Dateiname, Klasse (FlowCraftEditor),
-// Custom-Element-Tag (flowcraft-editor, keine Alias-Tags), globaler Compiler-
-// Export (window.FlowCraftCompiler), Speicher-Keys (flowcraft_flows/-platforms)
-// und Versions-Helfer (input_text.flowcraft_version) - keine Altlasten/Aliase
-// aus fruehreren, projektinternen Arbeitsnamen, da dies eine frische
-// Erstveroeffentlichung ohne bestehende Installationen ist.
-// Version:   0.9.39
-// Datum:     2026-09-30 12:14 UTC
-// Changelog: 0.9.39 - Namenskonsistenz hergestellt (auf Wunsch): saemtliche
-//            Alt-/Alias-Bezeichnungen aus der internen Entwicklungsphase
-//            entfernt, die nicht zum oeffentlichen Namen "FlowCraft" passten.
-//            Entfernt: der zusaetzliche Custom-Element-Alias-Tag (frueher
-//            zusaetzlich zu "flowcraft-editor" registriert) samt zugehoerigem
-//            CSS-Selektor, sowie der Migrations-Lesefallback fuer alte
-//            Speicher-Keys (unnoetig bei einer frischen Veroeffentlichung ohne
-//            bestehende Installationen). Der im generierten Automation-Text
-//            verwendete Werkzeugname heisst jetzt durchgaengig "FlowCraft"
-//            statt eines aelteren Arbeitsnamens. Keine funktionale Aenderung
-//            am Compiler. Vollstaendige Versionshistorie: siehe Projekt-
-//            Dokument "flowcraft-changelog.md".
+// FlowCraft - a Node-RED-style visual flow editor for Home Assistant
+// https://github.com/robine2006/ha-flowcraft
+// Version: 0.9.39
+// License: MIT (see LICENSE)
+// Full changelog: see CHANGELOG.md
 // ============================================================
 
 const pad = (n) => String(n).padStart(2, '0');
