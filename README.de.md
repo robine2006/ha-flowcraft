@@ -170,7 +170,7 @@ einfach nichts.
 | Baustein | Was er tut |
 |---|---|
 | 💡 **Gerät schalten** | Schaltet Licht/Schalter/etc. ein/aus/um (bei Licht optional Helligkeit in %) |
-| 💡 **Mehrere Geräte schalten** | Schaltet mehrere Geräte gleichzeitig mit derselben Aktion; der Node wächst mit der Anzahl der Geräte und zeigt jedes Gerät mit Ist-Zustand |
+| 💡 **Mehrere Geräte schalten** | Schaltet mehrere Geräte gleichzeitig mit derselben Aktion; der Node wächst mit der Anzahl der Geräte; je Gerät eigene Aktion möglich (an/aus/um, Helligkeit), jedes mit Ist-Zustand |
 | ⏳ **Verzögerung** | Wartet die angegebene Zeit, bevor es weitergeht |
 | 🔔 **Benachrichtigung** | Ruft einen beliebigen Benachrichtigungsdienst auf (Standard: HA-eigene „persistent_notification“) |
 | 🎚️ **Wert setzen** | Setzt einen Helferwert (input_number, input_text, input_select, input_boolean, number) |
@@ -270,6 +270,6 @@ einbinden.
 
 ---
 
-*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.45. Bei neuen
+*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.46. Bei neuen
 Versionen mit neuen Bausteinen oder Funktionen wird sie entsprechend
 aktualisiert. Änderungen siehe [CHANGELOG.md](CHANGELOG.md).*

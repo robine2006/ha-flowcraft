@@ -91,7 +91,7 @@ Every condition has two outputs: top = "yes", bottom = "no". Leave the bottom ou
 | Node | What it does |
 |---|---|
 | 💡 Device on/off/toggle | Switches a light/switch/etc. on, off or toggles it (optional brightness % for lights) |
-| 💡 Switch several devices | Switches several devices at once with the same action; the node grows with the number of devices and shows each device's live state |
+| 💡 Switch several devices | Switches several devices at once with the same action; the node grows with the number of devices; each device can have its own action (on/off/toggle, brightness) and shows its live state |
 | ⏳ Delay | Waits the given time before continuing |
 | 🔔 Notification | Calls any notification service (default: HA's built-in `persistent_notification`) |
 | 🎚️ Set value | Sets a helper value (`input_number`, `input_text`, `input_select`, `input_boolean`, `number`) |

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.46
+- *Switch several devices*: each device can now have its own action (as default / on / off / toggle, own brightness for lights). Each node line shows device, action and live state. Existing flows are unchanged.
+
 ## 0.9.45
 - **Flow status** in the toolbar: deployed / unsaved changes / last triggered / missing entities.
 - **Export / Import** of a flow as a JSON file.

@@ -1,7 +1,7 @@
 // ============================================================
 // FlowCraft - a Node-RED-style visual flow editor for Home Assistant
 // https://github.com/robine2006/ha-flowcraft
-// Version: 0.9.45
+// Version: 0.9.46
 // License: MIT (see LICENSE)
 // Full changelog: see CHANGELOG.md
 // ============================================================
@@ -34,7 +34,7 @@ const offs = (m) => {
 const hm = (s) => (s && /^\d{1,2}:\d{2}/.test(s) ? s.slice(0, 5).padStart(5, '0') + ':00' : undefined);
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ''));
 const DAYS = [['mon', 'Mo'], ['tue', 'Di'], ['wed', 'Mi'], ['thu', 'Do'], ['fri', 'Fr'], ['sat', 'Sa'], ['sun', 'So']];
-const VERSION = '0.9.45';
+const VERSION = '0.9.46';
 const DEFAULT_PLATFORMS = ['matter', 'homematicip_local'];
 const PLATFORMS_KEY = 'flowcraft_platforms';
 const VERSION_ENTITY = 'input_text.flowcraft_version';
@@ -59,9 +59,13 @@ function hashHue(str) {
   if (hue > 40 && hue < 65) hue = (hue + 90) % 360;
   return hue;
 }
+const devOf = (c, e) => {
+  const d = (c.dev && c.dev[e]) || {};
+  return { op: d.op || c.op || 'turn_on', bri: num(d.brightness) !== undefined ? num(d.brightness) : num(c.brightness) };
+};
 const devAct = (c, e) => {
-  const op = c.op || 'turn_on', a = { action: `${dom(e)}.${op}`, target: { entity_id: e } };
-  if (dom(e) === 'light' && op === 'turn_on' && num(c.brightness) !== undefined) a.data = { brightness_pct: num(c.brightness) };
+  const { op, bri } = devOf(c, e), a = { action: `${dom(e)}.${op}`, target: { entity_id: e } };
+  if (dom(e) === 'light' && op === 'turn_on' && bri !== undefined) a.data = { brightness_pct: bri };
   return a;
 };
 const OP_LBL = { turn_on: 'AN', turn_off: 'AUS', toggle: 'UM' };
@@ -848,8 +852,8 @@ class FlowCraftEditor extends HTMLElement {
     this._el.cv.addEventListener('keydown', (e) => { if ((e.key === 'Delete' || e.key === 'Backspace') && this._selSet.size) this._removeSelected(); });
     this._el.ins.addEventListener('input', (e) => this._field(e));
     this._el.ins.addEventListener('change', (e) => this._field(e));
-    this._el.ins.addEventListener('focusin', (e) => { if (e.target.matches('[data-k],[data-day]')) this._snapshot(); });
-    this._el.ins.addEventListener('click', (e) => { const rm = e.target.closest('[data-rmk]'); if (rm) { this._snapshot(); const n = this._flow.nodes.find((k) => k.id === this._sel); const arr = n && n.cfg[rm.dataset.rmk]; if (arr) { arr.splice(Number(rm.dataset.i), 1); this._save(); this._render(); this._renderIns(); } return; } if (e.target.id === 'delNode') { if (this._selSet.size > 1) this._removeSelected(); else this._removeNode(this._sel); } });
+    this._el.ins.addEventListener('focusin', (e) => { if (e.target.matches('[data-k],[data-day],[data-devop],[data-devbri]')) this._snapshot(); });
+    this._el.ins.addEventListener('click', (e) => { const rm = e.target.closest('[data-rmk]'); if (rm) { this._snapshot(); const n = this._flow.nodes.find((k) => k.id === this._sel); const arr = n && n.cfg[rm.dataset.rmk]; if (arr) { const gone = arr.splice(Number(rm.dataset.i), 1)[0]; if (n.cfg.dev && gone) delete n.cfg.dev[gone]; this._save(); this._render(); this._renderIns(); } return; } if (e.target.id === 'delNode') { if (this._selSet.size > 1) this._removeSelected(); else this._removeNode(this._sel); } });
   }
   disconnectedCallback() {
     window.removeEventListener('pointermove', this._mv); window.removeEventListener('pointerup', this._up); window.removeEventListener('keydown', this._key);
@@ -1129,8 +1133,12 @@ class FlowCraftEditor extends HTMLElement {
       const miss = this._missing(n), ml = multiOf(n);
       const mlBody = (nn, list, y1, g) => {
         const c = nn.cfg || {}, op = c.op || 'turn_on';
-        let b = `<text class="ns" x="10" y="${y1}">${OP_LBL[op]}${op === 'turn_on' && num(c.brightness) !== undefined ? ` (${c.brightness}%)` : ''}${list.length ? '' : ' - noch keine Geraete'}</text>`;
-        list.forEach((id, i) => { const y = y1 + g * (i + 1); b += `<text class="ns" x="10" y="${y}">${esc(trimLine(this._friendly(id), 24))}</text><text class="nv" text-anchor="end" x="${NW - 10}" y="${y}">${esc(this._actValue(id) || '–')}</text>`; });
+        let b = `<text class="ns" x="10" y="${y1}">Standard: ${OP_LBL[op]}${op === 'turn_on' && num(c.brightness) !== undefined ? ` (${c.brightness}%)` : ''}${list.length ? '' : ' - noch keine Geraete'}</text>`;
+        list.forEach((id, i) => {
+          const y = y1 + g * (i + 1), dv = devOf(c, id);
+          const al = `${OP_LBL[dv.op]}${dv.op === 'turn_on' && dom(id) === 'light' && dv.bri !== undefined ? ` ${dv.bri}%` : ''}`;
+          b += `<text class="ns" x="10" y="${y}">${esc(trimLine(this._friendly(id), 17))}</text><text class="nv" text-anchor="end" x="${NW - 10}" y="${y}">${esc(al)} · ${esc(this._actValue(id) || '–')}</text>`;
+        });
         return b;
       };
       h += `<g class="node${this._selSet.has(n.id) ? ' sel' : ''}${isActive ? ' active' : ''}${miss.length ? ' miss' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})">${miss.length ? `<title>Entitaet nicht gefunden: ${esc(miss.join(', '))}</title>` : ''}
@@ -1312,7 +1320,13 @@ class FlowCraftEditor extends HTMLElement {
         }).join('');
         if (multi) {
           const cur = Array.isArray(v) ? v : [];
-          h += cur.map((id, i) => `<div class="chip"><span>${esc(this._friendly(id))}${this._hass.states[id] ? '' : ' (nicht gefunden)'}</span><button data-rmk="${fl.k}" data-i="${i}" title="Entfernen">✕</button></div>`).join('');
+          h += cur.map((id, i) => {
+            const dv = devOf(c, id), dd = (c.dev && c.dev[id]) || {};
+            const ops = [['', 'wie Standard'], ['turn_on', 'An'], ['turn_off', 'Aus'], ['toggle', 'Um']];
+            return `<div class="chip" style="flex-wrap:wrap"><span>${esc(this._friendly(id))}${this._hass.states[id] ? '' : ' (nicht gefunden)'}</span><button data-rmk="${fl.k}" data-i="${i}" title="Entfernen">✕</button>`
+              + `<select data-devop="${esc(id)}" style="width:auto">${ops.map(([val, lab]) => `<option value="${val}"${(dd.op || '') === val ? ' selected' : ''}>${lab}</option>`).join('')}</select>`
+              + (dom(id) === 'light' && dv.op === 'turn_on' ? `<input data-devbri="${esc(id)}" type="number" min="0" max="100" placeholder="Helligkeit %" value="${esc(dd.brightness ?? '')}" style="width:110px">` : '') + '</div>';
+          }).join('');
           h += `<select data-addk="${fl.k}"><option value="">+ Geraet hinzufuegen</option>${optionsHtml}</select>${note}`;
         } else h += `<select data-k="${fl.k}"><option value="">- waehlen -</option>${optionsHtml}</select>${note}<div class="hint" data-hint="${fl.k}">${this._hintFor(v)}</div>`;
       }
@@ -1347,6 +1361,14 @@ class FlowCraftEditor extends HTMLElement {
     let entityChanged = false;
     if (t.dataset.addk) {
       if (t.value) { const arr = c[t.dataset.addk] = c[t.dataset.addk] || []; if (!arr.includes(t.value)) arr.push(t.value); this._save(); this._render(); this._renderIns(); }
+      return;
+    }
+    if (t.dataset.devop !== undefined || t.dataset.devbri !== undefined) {
+      const id = t.dataset.devop !== undefined ? t.dataset.devop : t.dataset.devbri;
+      const d = ((c.dev = c.dev || {})[id] = c.dev[id] || {});
+      if (t.dataset.devop !== undefined) d.op = t.value; else d.brightness = t.value;
+      this._save(); this._render();
+      if (t.dataset.devop !== undefined) this._renderIns();
       return;
     }
     if (t.dataset.day) c.days = Array.from(this._el.ins.querySelectorAll('[data-day]')).filter((i) => i.checked).map((i) => i.dataset.day);
