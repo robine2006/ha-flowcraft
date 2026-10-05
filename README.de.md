@@ -137,6 +137,8 @@ erkannt wird.
 | 🔘 **Taste/Fernbedienung** | Startet bei einem Tastendruck-Ereignis (z. B. Zigbee-Fernbedienung) | Event-Entität, Ereignistyp |
 | 📍 **Zone betreten/verlassen** | Startet, wenn eine Person eine Zone betritt/verlässt (Standort) | Person, Zone, Ereignis |
 | 📆 **Kalender-Ereignis** | Startet, wenn ein Kalendertermin beginnt/endet (optional nur bei bestimmtem Titel) | Kalender, Ereignis, Versatz, Titel-Filter |
+| 🚀 **Home Assistant startet** | Startet einmalig beim Start von Home Assistant | – |
+| 🧱 **Teilablauf (Start)** | Macht die angehängten Aktionen zu einem wiederverwendbaren Skript „Teilablauf: <Name>“, das jeder Flow per *Skript ausführen* aufrufen kann | Name |
 | 🔛 **Alexa-Schalter (An/Aus)** | Hat **zwei Ausgänge**: „Ein“ (oben) für die Einschalt-Aktionen, „Aus“ (unten) für die Ausschalt-Aktionen. Siehe Kasten unten. | Name für Alexa (z. B. „Morgenlicht“) |
 
 > Ein Flow kann auch **mehrere** Auslöser-Bausteine gleichzeitig enthalten –
@@ -150,7 +152,7 @@ erkannt wird.
 | Baustein | Was er prüft |
 |---|---|
 | 🌙 **Ist es dunkel?** | Helligkeitssensor unter Schwellenwert (mit Sonnenhöhe als Ausweich-Logik, falls Sensor mal ausfällt) |
-| ❓ **Zustand ist** | Entität hat einen bestimmten Zustand (mehrere Werte mit Komma möglich) |
+| ❓ **Zustand ist** | Entität hat einen bestimmten Zustand (mehrere Werte mit Komma möglich); optional „seit mindestens N Minuten“ |
 | 🔢 **Wert-Vergleich** | Zahlenwert/Attribut liegt über/unter einer Schwelle |
 | ☀️ **Sonnenstand** | Aktuelle Zeit liegt vor/nach Sonnenauf-/-untergang (± Versatz) |
 | 🕒 **Zeitfenster** | Aktuelle Uhrzeit liegt zwischen zwei Uhrzeiten |
@@ -168,11 +170,12 @@ einfach nichts.
 | Baustein | Was er tut |
 |---|---|
 | 💡 **Gerät schalten** | Schaltet Licht/Schalter/etc. ein/aus/um (bei Licht optional Helligkeit in %) |
+| 💡 **Mehrere Geräte schalten** | Schaltet mehrere Geräte gleichzeitig mit derselben Aktion; der Node wächst mit der Anzahl der Geräte und zeigt jedes Gerät mit Ist-Zustand |
 | ⏳ **Verzögerung** | Wartet die angegebene Zeit, bevor es weitergeht |
 | 🔔 **Benachrichtigung** | Ruft einen beliebigen Benachrichtigungsdienst auf (Standard: HA-eigene „persistent_notification“) |
 | 🎚️ **Wert setzen** | Setzt einen Helferwert (input_number, input_text, input_select, input_boolean, number) |
 | 🎬 **Szene aktivieren** | Aktiviert eine bereits in HA angelegte Szene |
-| 📜 **Skript ausführen** | Startet ein bereits vorhandenes HA-Skript |
+| 📜 **Skript ausführen** | Startet ein bereits vorhandenes HA-Skript; wahlweise mit Warten bis es fertig ist (z. B. bei Teilabläufen) |
 | 🪟 **Rollladen/Cover** | Öffnen/Schließen/Stopp/Position setzen für Rollläden, Markisen etc. |
 | 📱 **Push-Benachrichtigung** | Schickt eine Push-Nachricht an ein Smartphone mit Home-Assistant-App |
 | 🔁 **Wiederholen** | Wiederholt alle danach angeschlossenen Aktionen X-mal |
@@ -267,6 +270,6 @@ einbinden.
 
 ---
 
-*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.44. Bei neuen
+*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.45. Bei neuen
 Versionen mit neuen Bausteinen oder Funktionen wird sie entsprechend
 aktualisiert. Änderungen siehe [CHANGELOG.md](CHANGELOG.md).*

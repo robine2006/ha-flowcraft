@@ -62,6 +62,8 @@ The card takes up the full available height and needs no further configuration �
 | 🔘 Button/remote | Fires on a button-press event entity (e.g. a Zigbee remote) | event entity, event type |
 | 📍 Zone enter/leave | Fires when a person enters/leaves a zone | person, zone, event |
 | 📆 Calendar event | Fires when a calendar event starts/ends (optionally filtered by title) | calendar, event, offset, title filter |
+| 🚀 Home Assistant start | Fires once when Home Assistant starts | – |
+| 🧱 Sub-flow (start) | Turns the connected actions into a reusable script "Sub-flow: <name>" that any flow can call with *Run script* | name |
 | 🔛 Alexa switch (On/Off) | Two outputs: **On** (top) holds the actions for switching on, **Off** (bottom) the actions for switching off. See the note below. | name for Alexa (e.g. "Morning light") |
 
 A flow can contain several trigger nodes at once — each fires the flow (or its own branch) independently.
@@ -73,7 +75,7 @@ A flow can contain several trigger nodes at once — each fires the flow (or its
 | Node | What it checks |
 |---|---|
 | 🌙 Is it dark? | Illuminance sensor below a threshold (with sun elevation as a fallback if the sensor is unavailable) |
-| ❓ State is | Entity has a given state (comma-separated list for multiple) |
+| ❓ State is | Entity has a given state (comma-separated list for multiple); optional "for at least N minutes" |
 | 🔢 Numeric comparison | A numeric value/attribute is above/below a threshold |
 | ☀️ Sun position | Current time is before/after sunrise/sunset (± offset) |
 | 🕒 Time window | Current time is between two times |
@@ -89,11 +91,12 @@ Every condition has two outputs: top = "yes", bottom = "no". Leave the bottom ou
 | Node | What it does |
 |---|---|
 | 💡 Device on/off/toggle | Switches a light/switch/etc. on, off or toggles it (optional brightness % for lights) |
+| 💡 Switch several devices | Switches several devices at once with the same action; the node grows with the number of devices and shows each device's live state |
 | ⏳ Delay | Waits the given time before continuing |
 | 🔔 Notification | Calls any notification service (default: HA's built-in `persistent_notification`) |
 | 🎚️ Set value | Sets a helper value (`input_number`, `input_text`, `input_select`, `input_boolean`, `number`) |
 | 🎬 Activate scene | Activates an existing HA scene |
-| 📜 Run script | Runs an existing HA script |
+| 📜 Run script | Runs an existing HA script; optionally waits until it has finished (e.g. for sub-flows) |
 | 🪟 Cover | Open/close/stop/set position for covers (blinds, awnings, etc.) |
 | 📱 Push notification | Sends a push notification to a phone running the Home Assistant Companion App |
 | 🔁 Repeat | Repeats everything downstream N times |
