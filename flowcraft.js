@@ -1,7 +1,7 @@
 // ============================================================
 // FlowCraft - a Node-RED-style visual flow editor for Home Assistant
 // https://github.com/robine2006/ha-flowcraft
-// Version: 0.9.39
+// Version: 0.9.44
 // License: MIT (see LICENSE)
 // Full changelog: see CHANGELOG.md
 // ============================================================
@@ -9,11 +9,6 @@
 const pad = (n) => String(n).padStart(2, '0');
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? undefined : Number(v));
 const dom = (e) => String(e || '').split('.')[0];
-// Prueft generisch (ohne Hardcodierung einzelner Entitaeten), ob in hass.states
-// mindestens eine Entitaet existiert, deren Domain in "domains" enthalten ist
-// und - falls "dc" (Liste erlaubter device_class-Werte) angegeben ist -
-// zusaetzlich deren device_class-Attribut darin vorkommt. Ohne Domain-Filter
-// (domains leer/undefined) gilt ein Feld als uneingeschraenkt -> immer verfuegbar.
 function domainHasEntity(hass, domains, dc) {
   if (!domains || !domains.length) return true;
   const states = (hass && hass.states) || {};
@@ -38,43 +33,13 @@ const offs = (m) => {
 const hm = (s) => (s && /^\d{1,2}:\d{2}/.test(s) ? s.slice(0, 5).padStart(5, '0') + ':00' : undefined);
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ''));
 const DAYS = [['mon', 'Mo'], ['tue', 'Di'], ['wed', 'Mi'], ['thu', 'Do'], ['fri', 'Fr'], ['sat', 'Sa'], ['sun', 'So']];
-const VERSION = '0.9.39';
-// Standardauswahl, solange der Nutzer noch keine eigene Integrationsauswahl
-// getroffen hat: IKEA-Geraete laufen ueber die Matter-Integration (DIRIGERA-
-// Bruecke), dazu Homematic/HomematicIP ueber die lokale RaspberryMatic-CCU
-// (Integration "Homematic(IP) Local", HA-Platform-Name homematicip_local).
+const VERSION = '0.9.44';
 const DEFAULT_PLATFORMS = ['matter', 'homematicip_local'];
 const PLATFORMS_KEY = 'flowcraft_platforms';
 const VERSION_ENTITY = 'input_text.flowcraft_version';
 const VERSION_SEEN_KEY = 'flowcraft_reload_seen';
-// Nur Domains, deren Entitaeten generisch turn_on/turn_off/toggle unterstuetzen.
-// 'cover' (nur open/close/stop) und 'scene' (nur "aktivieren", kein turn_off/toggle)
-// wurden bewusst ausgeschlossen, da sie mit diesem Aktions-Node nicht sauber
-// schaltbar sind.
 const ACT_DOMAINS = ['switch', 'light', 'input_boolean', 'fan', 'climate', 'media_player', 'script', 'automation', 'humidifier', 'siren', 'valve'];
-// Helfer-Domains: gehoeren wie sun.sun zu keiner Geraete-Integration (in der Entity-
-// Registry steht als "Plattform" jeweils die Helfer-Domain selbst, z.B. "input_number",
-// nicht der Hersteller). Sie muessen daher vom Integrationen-Filter ausgenommen werden,
-// sonst verschwinden z.B. Homematic-Automatisierungshelfer bei "Wert setzen" komplett,
-// solange man nicht extra die Pseudo-Integration "input_number" & Co. anhakt.
 const HELPER_DOMAINS = ['input_number', 'input_text', 'input_select', 'input_boolean', 'input_datetime', 'input_button', 'timer', 'counter'];
-// Farb-/Symbol-Zuordnung fuer die Entitaetsauswahl, damit auf einen Blick erkennbar
-// ist, von welchem Hersteller/welcher Integration eine Entitaet stammt. Die Farben
-// sind bewusst etwas gedaempft (kein reines Gelb/Blau usw.) gewaehlt, damit der Text
-// sowohl auf hellem als auch auf dunklem Hintergrund noch gut lesbar bleibt.
-// IKEA-Geraete laufen technisch ueber die Matter-Integration, sollen aber trotzdem
-// markentypisch gelb erscheinen statt in der generischen Matter-Farbe - siehe
-// _platformStyle(), das dafuer zuerst den Hersteller prueft.
-// Wichtig: der tatsaechliche HA-Platform-Name fuer die lokale Homematic(IP)-CCU
-// (RaspberryMatic) ist "homematicip_local" - NICHT "homematic" oder
-// "homematicip_cloud" (das waere die separate Cloud-Anbindung). In 0.9.7 stand
-// hier faelschlicherweise "homematic"/"homematicip_cloud", wodurch nur IKEA
-// (Matter) farbig erschien - siehe 0.9.8-Changelog.
-// Fest zugeordnete Farben fuer die bekanntesten/haeufigsten Integrationen (damit
-// diese immer gleich aussehen). Jede andere Integration, die hier nicht drinsteht,
-// bekommt ueber _hashHue() automatisch eine eigene, aus ihrem Namen errechnete
-// Farbe - so hat wirklich JEDE Integration eine eigene, aber stabile Farbe, auch
-// ohne dass sie hier von Hand eingetragen werden muss.
 const PLATFORM_STYLE = {
   matter: { color: '#6a1b9a', icon: '🟣' },
   homematicip_local: { color: '#1565c0', icon: '🔵' },
@@ -86,11 +51,6 @@ const PLATFORM_STYLE = {
   shelly: { color: '#00695c', icon: '🔻' },
 };
 const IKEA_STYLE = { color: '#8a6d00', icon: '🟡' };
-// Errechnet aus einem beliebigen Integrations-/Platform-Namen eine feste,
-// gut lesbare Farbe (Hashwert -> Farbton), damit auch Integrationen ohne
-// Eintrag in PLATFORM_STYLE eine eigene, aber immer gleichbleibende Farbe
-// bekommen. Der Gelbbereich bleibt IKEA vorbehalten, damit es nicht zu
-// Verwechslungen kommt.
 function hashHue(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
@@ -99,7 +59,6 @@ function hashHue(str) {
   return hue;
 }
 
-// ---------- Node-Typen ----------
 const T = {
   trig_motion: {
     cat: 'trigger', label: 'Bewegung', icon: '🚶', color: '#2e7d32',
@@ -108,10 +67,6 @@ const T = {
       { k: 'to', l: 'Ausloesen bei', t: 'select', o: [['on', 'Bewegung erkannt'], ['off', 'Bewegung beendet']], v: 'on' },
       { k: 'for', l: 'Fuer mindestens (Sek.)', t: 'number' },
     ],
-    // sub liefert [Sensor/Entitaet, Vergleichswerte] - siehe subParts()/wrapSub()
-    // in _render(): dadurch landet die Entitaet immer auf der ersten und die
-    // eingestellten Werte auf der zweiten Zeile des Nodes, statt sich einen
-    // Zeilenumbruch an einer zufaelligen Wortgrenze zu teilen.
     sub: (c, L) => [L(c.entity), `${c.to === 'off' ? 'beendet' : 'erkannt'}${num(c.for) ? `, ≥${c.for}s` : ''}`],
     trig: (c) => clean({ trigger: 'state', entity_id: c.entity, to: c.to || 'on', for: num(c.for) ? hms(0, num(c.for)) : undefined }),
   },
@@ -154,11 +109,6 @@ const T = {
     trig: (c) => ({ trigger: 'time', at: hm(c.at) || '07:00:00' }),
   },
   trig_time_weekday: {
-    // Ein Wochentag allein kann in HA nichts ausloesen (kein Ereignis), deshalb
-    // ist dies ein eigener Ausloeser-Node, der eine Uhrzeit MIT Wochentags-
-    // Einschraenkung kombiniert: technisch ein normaler Zeit-Trigger, dessen
-    // gesamter nachgeschalteter Zweig (steps) vom Compiler zusaetzlich in eine
-    // "if: weekday"-Bedingung eingepackt wird (siehe wrapWeekday in compileFlow).
     cat: 'trigger', label: 'Uhrzeit + Wochentag', icon: '📅', color: '#2e7d32',
     wrapWeekday: true,
     fields: [
@@ -202,12 +152,6 @@ const T = {
     trig: (c) => ({ trigger: 'zone', entity_id: c.entity, zone: c.zone, event: c.event || 'enter' }),
   },
   trig_calendar: {
-    // wrapCalendarTitle: HA kennt kein "waehle ein bestimmtes Ereignis aus einer
-    // Liste" - der Trigger feuert immer fuer JEDES Ereignis im gewaehlten Kalender.
-    // Ist "title_filter" gesetzt, wird der gesamte nachgeschaltete Zweig deshalb
-    // zusaetzlich in eine Template-Bedingung eingepackt, die trigger.calendar_event.summary
-    // mit dem gewuenschten Titel vergleicht (siehe compileFlow) - spart den bisher
-    // noetigen separaten "Vorlage (Template)"-Node fuer diesen sehr haeufigen Fall.
     cat: 'trigger', label: 'Kalender-Ereignis', icon: '📆', color: '#2e7d32',
     wrapCalendarTitle: true,
     fields: [
@@ -219,45 +163,13 @@ const T = {
     sub: (c, L) => [L(c.entity), `${c.event === 'end' ? 'endet' : 'beginnt'}${c.title_filter ? ` ("${c.title_filter}")` : ''}`],
     trig: (c) => clean({ trigger: 'calendar', entity_id: c.entity, event: c.event || 'start', offset: offs(c.offset) }),
   },
-  trig_alexa: {
-    // Ganz ohne Helfer und ohne manuell in der Alexa-App eine Routine anzulegen:
-    // dieser Node erzeugt beim Deploy KEINE HA-Automation, sondern ein eigenes,
-    // natives HA-Skript (script.*) mit dem hier eingegebenen Namen als Anzeigename
-    // (siehe asScript in compileFlow/_deploy). Skripte werden von der bestehenden
-    // Alexa-Anbindung automatisch wie ein Geraet/eine Szene an Alexa
-    // weitergegeben - Alexa kann sie direkt per "Alexa, schalte <Name> ein"
-    // bzw. "Alexa, aktiviere <Name>" ausloesen, ganz ohne Zwischenschalter oder
-    // Routine. Einzige (einmalige) Voraussetzung: neu hinzugekommene Geraete
-    // muessen Alexa bekannt gemacht werden ("Alexa, entdecke Geraete neu" bzw.
-    // in der Alexa-App "Geraete hinzufuegen") - das ist bei JEDEM neuen Geraet
-    // in Alexa so und keine Besonderheit dieses Nodes.
-    // WICHTIG (0.9.34): Ein HA-Skript kennt selbst kein "an"/"aus" - es fuehrt
-    // beim Aufruf immer nur EINMAL die hier angeschlossene Aktionskette aus.
-    // Home Assistant meldet Skripte an Alexa als Szene, die Alexa nur
-    // "aktivieren" kann. "Alexa, schalte <Name> EIN" aktiviert die Sequenz
-    // ganz normal; "Alexa, schalte <Name> AUS" wird von Alexa zwar meist mit
-    // "ok" quittiert, loest in HA aber KEINE eigene "Aus"-Sequenz aus. Wer
-    // sowohl Ein- als auch Ausschalten per Sprache will, braucht daher ZWEI
-    // eigene Alexa-Sprachbefehl-Nodes mit unterschiedlichem Namen (z.B.
-    // "Schlafzimmerlicht an" -> Einschalten, "Schlafzimmerlicht aus" ->
-    // Ausschalten) - siehe Hinweistext im Feld und in der Anleitung.
-    // NEU (0.9.35): Beim Deploy wird das erzeugte Skript automatisch per
-    // WebSocket-Befehl (homeassistant/expose_entity) bei Alexa freigegeben
-    // (siehe _setAlexaExposed/_deploy) - der Schieberegler unter Einstellungen
-    // -> Sprachassistenten -> Alexa muss dafuer nicht mehr manuell umgelegt
-    // werden. Wird dieser Node geloescht (oder aus der Aktionskette entfernt),
-    // wird die Freigabe beim naechsten Deploy automatisch wieder zurueckgenommen.
-    // Home Assistant Cloud meldet eine geaenderte Freigabeliste von sich aus
-    // aktiv an Alexa (Discovery.AddOrUpdateReport) - ein neues Skript taucht
-    // dadurch idR. genauso automatisch bei Alexa auf wie ein neu hinzugefuegtes
-    // Matter-Geraet, meist innerhalb von Sekunden bis wenigen Minuten, ganz ohne
-    // "Alexa, entdecke Geraete neu".
-    cat: 'trigger', label: 'Alexa-Sprachbefehl', icon: '🗣️', color: '#2e7d32',
-    asScript: true,
+  trig_alexa_switch: {
+    cat: 'trigger', label: 'Alexa-Schalter (An/Aus)', icon: '🔛', color: '#2e7d32',
+    asSwitch: true, twoOut: true, outLabels: ['Ein', 'Aus'],
     fields: [
-      { k: 'phrase', l: 'Name fuer Alexa (z.B. "Schlafzimmerlicht an" - fuehrt IMMER nur diese eine Aktionskette aus. Fuer An UND Aus: zwei Nodes mit je eigenem Namen anlegen, siehe Anleitung)', t: 'text', r: 1 },
+      { k: 'name', l: 'Name fuer Alexa (z.B. "Morgenlicht") - "Alexa, schalte <Name> an/aus" funktioniert direkt, ohne "aktiviere"', t: 'text', r: 1 },
     ],
-    sub: (c) => c.phrase || '',
+    sub: (c) => c.name || '',
   },
   cond_dark: {
     cat: 'cond', label: 'Ist es dunkel?', icon: '🌙', color: '#1565c0',
@@ -345,9 +257,6 @@ const T = {
   },
   cond_multi: {
     cat: 'cond', label: 'UND / ODER', icon: '🔗', color: '#1565c0',
-    // Ersetzt die vorherigen getrennten Nodes "UND" und "ODER" (0.9.13): jetzt ein
-    // einziger Node, bei dem die Verknuepfung (UND/ODER) als Kriterium waehlbar ist
-    // und bis zu 4 Entitaet/Zustand-Paare angegeben werden koennen (nicht mehr nur 2).
     fields: [
       { k: 'logic', l: 'Verknuepfung', t: 'select', o: [['and', 'UND (alle muessen zutreffen)'], ['or', 'ODER (mindestens eine muss zutreffen)']], v: 'and' },
       { k: 'entity1', l: 'Entitaet 1', t: 'entity', filterInt: true, r: 1 },
@@ -476,7 +385,6 @@ const T = {
   },
 };
 
-// ---------- Compiler: Flow -> HA-Automation ----------
 function validate(flow) {
   const errors = [], warnings = [];
   const inc = new Set(flow.wires.map((w) => w.to));
@@ -501,9 +409,6 @@ function compileFlow(flow) {
     const t = T[n.type];
     if (path.includes(n.id)) throw new Error(`Schleife im Flow bei „${t.label}“`);
     const p = path.concat(n.id), c = n.cfg || {};
-    // wrapRepeat (z.B. "Wiederholen"): statt die Aktion selbst auszufuehren und
-    // danach den nachgeschalteten Zweig anzuhaengen, wird der gesamte
-    // nachgeschaltete Zweig als "sequence" in einen HA repeat-Block gepackt.
     if (t.wrapRepeat) {
       return [{ repeat: { count: num(c.count) || 1, sequence: seq(outs(n.id, 0), p) } }];
     }
@@ -515,10 +420,6 @@ function compileFlow(flow) {
     }
     return [t.act(c)].concat(seq(outs(n.id, 0), p));
   };
-  // Baut die "steps" (Aktionsliste) ab einem Ausloeser-Node - inkl. der
-  // bestehenden Wochentags-/Kalender-Titel-Einpackungen, die unabhaengig davon
-  // gelten, ob der Ausloeser am Ende als HA-Automation-Trigger (asAuto) oder
-  // als HA-Skript (asScript, siehe "Alexa-Sprachbefehl") verwendet wird.
   const buildSteps = (tr) => {
     let steps = seq(outs(tr.id, 0), [tr.id]);
     const days = (tr.cfg || {}).days;
@@ -533,20 +434,15 @@ function compileFlow(flow) {
     return steps;
   };
   const allTriggerNodes = flow.nodes.filter((n) => T[n.type] && T[n.type].cat === 'trigger');
-  // asScript-Ausloeser (aktuell nur "Alexa-Sprachbefehl"): erzeugen KEINEN
-  // Automation-Trigger, sondern werden weiter unten je einzeln zu einem
-  // eigenstaendigen HA-Skript (script.*) kompiliert - Alexa kann Skripte ohne
-  // jede weitere Einrichtung direkt per Sprachbefehl ausloesen (siehe
-  // Kommentar am Node-Typ trig_alexa).
   const autoBranches = allTriggerNodes
-    .filter((n) => !T[n.type].asScript)
+    .filter((n) => !T[n.type].asSwitch)
     .map((tr) => ({ tr, steps: buildSteps(tr) }))
     .filter((b) => b.steps.length);
-  const scriptBranches = allTriggerNodes
-    .filter((n) => T[n.type].asScript)
-    .map((tr) => ({ tr, steps: buildSteps(tr) }))
-    .filter((b) => b.steps.length);
-  if (!autoBranches.length && !scriptBranches.length) throw new Error('Kein Ausloeser ist mit einer Aktion verbunden');
+  const switchBranches = allTriggerNodes
+    .filter((n) => T[n.type].asSwitch)
+    .map((tr) => ({ tr, onSteps: seq(outs(tr.id, 0), [tr.id]), offSteps: seq(outs(tr.id, 1), [tr.id]) }))
+    .filter((b) => b.onSteps.length || b.offSteps.length);
+  if (!autoBranches.length && !switchBranches.length) throw new Error('Kein Ausloeser ist mit einer Aktion verbunden');
   let automation = null;
   if (autoBranches.length) {
     const triggers = autoBranches.map((b) => ({ ...T[b.tr.type].trig(b.tr.cfg || {}), id: b.tr.id }));
@@ -564,30 +460,18 @@ function compileFlow(flow) {
       mode: hasDelay ? 'restart' : 'single',
     };
   }
-  // Jeder Alexa-Sprachbefehl-Node wird ein eigenstaendiges HA-Skript, damit
-  // Alexa ihn direkt per Namen ansprechen kann - der eingegebene Name wird
-  // dabei 1:1 zum Anzeigenamen (alias) des Skripts.
-  const scripts = scriptBranches.map((b) => ({
-    id: 'flowcraft_alexa_' + b.tr.id,
-    nodeId: b.tr.id,
-    cfg: {
-      alias: (b.tr.cfg || {}).phrase || 'Alexa-Befehl',
-      sequence: b.steps,
-      mode: 'restart',
-    },
-  }));
-  return { automation, scripts };
+  const switches = switchBranches.map((b) => {
+    const name = (b.tr.cfg || {}).name || 'Alexa-Schalter';
+    return {
+      nodeId: b.tr.id,
+      name,
+      onScript: { id: 'flowcraft_alexasw_on_' + b.tr.id, cfg: { alias: name + ' - An', sequence: b.onSteps, mode: 'restart' } },
+      offScript: { id: 'flowcraft_alexasw_off_' + b.tr.id, cfg: { alias: name + ' - Aus', sequence: b.offSteps, mode: 'restart' } },
+    };
+  });
+  return { automation, switches };
 }
 
-// ---------- Simulation: Bedingungen mit aktuellen hass.states auswerten, ----------
-// ---------- OHNE irgendeinen Service/Aktor tatsaechlich aufzurufen. ----------
-// Deckt genau die Bedingungs-Formen ab, die die eigenen cond_*-Nodes erzeugen
-// (state, numeric_state, zone, time, and/or/not, sun, template). Fuer "sun" gibt es
-// nur eine grobe Naeherung ueber die aktuelle Sonnenhoehe (keine echte Astral-
-// Berechnung mit Datum/Offset), fuer "template" (Vorlage, sowie den automatisch
-// erzeugten Kalender-Titel-Filter) kann ohne echten Trigger-Kontext (z.B.
-// trigger.calendar_event) nicht sicher ausgewertet werden - wird deshalb als
-// "angenommen: Ja" markiert, klar gekennzeichnet mit approx:true.
 function evalConditionLocal(cond, hass) {
   const st = (id) => (hass && hass.states ? hass.states[id] : undefined);
   switch (cond.condition) {
@@ -671,25 +555,10 @@ function evalConditionLocal(cond, hass) {
 
 if (typeof window !== 'undefined') window.FlowCraftCompiler = { compileFlow, validate, T, evalConditionLocal };
 
-// ---------- Editor ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const NW = 220;
-// Zeilenabstand Titel->Sub-Text bzw. (falls vorhanden) letzte Sub-Zeile->"Aktuell":
-// bei Pruefen-Nodes (cat 'cond') groesser, weil dort noch die Ja/Nein-Beschriftung
-// neben den Ausgangs-Ports Platz braucht.
-const catGap = (n) => (T[n.type] && T[n.type].cat === 'cond' ? 26 : 16);
-// Zeilenhoehe der Sub-Text-Zeile(n) (11px Schrift, siehe .fe .ns).
-const LINE_H = 13;
-// Basis-Hoehe je nach Node-Kategorie: Titelzeile + Platz fuer bis zu ZWEI
-// Sub-Text-Zeilen (automatischer Zeilenumbruch statt Abschneiden mitten im
-// Wort, siehe wrapSub()) + Nodes mit einer Bezugs-Entitaet bekommen zusaetzliche
-// Hoehe fuer die dritte Zeile mit dem aktuellen Ist-Wert.
-const nhBase = (n) => 28 + catGap(n) + LINE_H;
-// Liefert die Entitaet, deren Ist-Wert als dritte Zeile im Node angezeigt werden
-// soll - fuer Aktor-, Ausloeser- und Pruefen-Nodes mit genau einer Bezugs-Entitaet
-// (bei "UND/ODER" mit mehreren Entitaeten wird die erste gezeigt); Nodes ohne
-// Entitaetsbezug (Uhrzeit, Sonnenstand, Wochentag, Vorlage, Verzoegerung, ...)
-// liefern nichts und bekommen daher auch keine dritte Zeile.
+const catGap = (n) => 16;
+const nhBase = (n) => 28 + catGap(n) * 2;
 const nhEntity = (n) => {
   const t = T[n.type];
   if (!t || !n.cfg) return undefined;
@@ -699,13 +568,7 @@ const nhEntity = (n) => {
   return undefined;
 };
 const nhShowsVal = (n) => !!nhEntity(n);
-// Gesamthoehe: Basis (Titel + bis zu 2 Sub-Zeilen) plus - falls eine dritte
-// Zeile mit dem Ist-Wert gezeigt wird - derselbe Zeilenabstand wie zwischen
-// Titel und Sub-Text, damit alle Zeilen gleichmaessig verteilt sind.
 const nh = (n) => nhBase(n) + (nhShowsVal(n) ? catGap(n) : 0);
-// Bricht einen Sub-Text auf bis zu zwei Zeilen um (an einer Wortgrenze nahe
-// maxLen, sonst hart), statt ihn mitten im Wort auf einer zu langen Zeile
-// abzuschneiden. Passt zusammen mit NW=220px / .ns-Schriftgroesse (11px).
 const wrapSub = (str, maxLen) => {
   str = String(str ?? '');
   if (str.length <= maxLen) return [str, ''];
@@ -716,29 +579,15 @@ const wrapSub = (str, maxLen) => {
   if (line2.length > maxLen) line2 = line2.slice(0, maxLen - 1) + '…';
   return [line1, line2];
 };
-// Kuerzt eine bereits an einer sinnvollen Stelle abgeteilte Zeile (siehe
-// subParts()) hart auf maxLen, falls sie (z.B. bei sehr langen Entitaetsnamen)
-// trotzdem zu lang fuer eine Zeile ist.
 const trimLine = (str, maxLen) => {
   str = String(str ?? '');
   return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
 };
-// Node-Typen mit Entitaetsbezug liefern ihren sub()-Text bewusst als
-// [Sensor/Entitaet, Vergleichswerte-bzw.-Zustand] (Array) statt als ein-
-// zelnen String, damit die zweite Node-Zeile immer an dieser sinnvollen,
-// fachlichen Stelle umbricht (z.B. "Buero Luftfeuchtigkeit" / "> 90, < 3")
-// statt an einer zufaelligen Wortgrenze. Andere Node-Typen (Vorlage,
-// UND/ODER, Benachrichtigung, ...) liefern weiterhin einen einzelnen String,
-// der bei Bedarf per wrapSub() umgebrochen wird. subParts() liefert in
-// beiden Faellen einheitlich [Zeile1, Zeile2] fuer die Anzeige im Node.
 const subParts = (t, c, L, maxLen) => {
   const r = t.sub(c, L);
   if (Array.isArray(r)) return [trimLine(r[0] || '', maxLen), trimLine(r[1] || '', maxLen)];
   return wrapSub(String(r ?? ''), maxLen);
 };
-// Liefert denselben sub()-Text als einzelnen, flachen String (z.B. fuer die
-// Text-Vorschau bei "Simulieren" oder den Ausloeser-Kopf), unabhaengig davon,
-// ob sub() ein Array oder einen String zurueckgibt.
 const subFlat = (t, c, L) => {
   const r = t.sub(c, L);
   return Array.isArray(r) ? r.filter(Boolean).join(' ') : String(r ?? '');
@@ -746,11 +595,6 @@ const subFlat = (t, c, L) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const STORE_KEY = 'flowcraft_flows';
 
-// Beispiel-Flow fuer Erstinstallationen - bewusst mit generischen Platzhalter-
-// Entities statt echter Geraete-/Standortdaten des Autors (siehe Changelog
-// 0.9.37), damit eine veroeffentlichte Version keine persoenlichen Daten
-// enthaelt. Die Platzhalter existieren in keiner echten HA-Instanz, der Flow
-// dient nur zur Veranschaulichung des Aufbaus (Auslöser -> Bedingung -> Aktion).
 const sampleFlow = () => ({
   id: 'f' + Date.now().toString(36), name: 'Beispiel: Licht bei Bewegung', enabled: false, seq: 5,
   nodes: [
@@ -811,14 +655,16 @@ class FlowCraftEditor extends HTMLElement {
   constructor() {
     super();
     this._flows = []; this._cur = null; this._sel = null; this._drag = null; this._conn = null; this._timer = null;
-    this._allowedIds = undefined; // undefined = noch nicht geladen, null = keine Einschraenkung (Registry fehlt), Set = aktiv
-    this._registry = null; // rohe Entity-Registry (config/entity_registry/list)
-    this._allPlatforms = []; // [{id, count}] alle in der Registry gefundenen Integrationen
-    this._selectedPlatforms = null; // Set der vom Nutzer gewaehlten Integrationen
-    this._selSet = new Set(); // Mehrfachauswahl von Node-IDs auf dem Canvas
-    this._band = null; // Auswahlrahmen waehrend des Aufziehens (Rubber-Band-Select)
-    this._clipboard = null; // {nodes, wires} fuer Kopieren/Einfuegen
-    this._undoStacks = {}; // je Flow-ID ein Verlauf von {nodes, wires}-Schnappschuessen
+    this._allowedIds = undefined;
+    this._registry = null;
+    this._allPlatforms = [];
+    this._selectedPlatforms = null;
+    this._selSet = new Set();
+    this._band = null;
+    this._clipboard = null;
+    this._undoStacks = {};
+    this._registryUnsubs = [];
+    this._registryReloadTimer = null;
   }
   setConfig(c) { this._config = c || {}; }
   getCardSize() { return 12; }
@@ -826,11 +672,8 @@ class FlowCraftEditor extends HTMLElement {
     const first = !this._hass;
     const prev = this._hass;
     this._hass = h;
-    if (first) { this._build(); this._load(); this._loadIntegrationsData(); }
+    if (first) { this._build(); this._load(); this._loadIntegrationsData(); this._subscribeRegistry(); }
     else {
-      // Canvas nur neu zeichnen, wenn sich der Ist-Wert einer aktuell sichtbaren
-      // Aktor-Entitaet (dritte Zeile im Node) tatsaechlich geaendert hat - nicht
-      // bei jedem HA-Update irgendeiner der ~1950 Entitaeten neu rendern.
       const f = this._flow;
       if (f) {
         const ids = f.nodes.map((n) => nhEntity(n)).filter(Boolean);
@@ -845,19 +688,17 @@ class FlowCraftEditor extends HTMLElement {
   }
   get _flow() { return this._flows.find((f) => f.id === this._cur); }
 
-  // --- Auto-Update: Seite automatisch neu laden, wenn eine neue Kartenversion deployt wurde ---
   _checkVersion() {
     const s = this._hass.states[VERSION_ENTITY];
     const latest = s && String(s.state || '').trim();
     if (!latest || latest === VERSION) return;
     let seen = '';
-    try { seen = sessionStorage.getItem(VERSION_SEEN_KEY) || ''; } catch (e) { /* ignore */ }
-    if (seen === latest) return; // schon versucht, keine Reload-Schleife
-    try { sessionStorage.setItem(VERSION_SEEN_KEY, latest); } catch (e) { /* ignore */ }
+    try { seen = sessionStorage.getItem(VERSION_SEEN_KEY) || ''; } catch (e) {}
+    if (seen === latest) return;
+    try { sessionStorage.setItem(VERSION_SEEN_KEY, latest); } catch (e) {}
     location.reload();
   }
 
-  // --- Aufbau ---
   _build() {
     this.innerHTML = `<ha-card><style>${CSS}</style><div class="fe">
       <div class="bar">
@@ -908,9 +749,26 @@ class FlowCraftEditor extends HTMLElement {
     this._el.ins.addEventListener('focusin', (e) => { if (e.target.matches('[data-k],[data-day]')) this._snapshot(); });
     this._el.ins.addEventListener('click', (e) => { if (e.target.id === 'delNode') { if (this._selSet.size > 1) this._removeSelected(); else this._removeNode(this._sel); } });
   }
-  disconnectedCallback() { window.removeEventListener('pointermove', this._mv); window.removeEventListener('pointerup', this._up); window.removeEventListener('keydown', this._key); }
+  disconnectedCallback() {
+    window.removeEventListener('pointermove', this._mv); window.removeEventListener('pointerup', this._up); window.removeEventListener('keydown', this._key);
+    clearTimeout(this._registryReloadTimer);
+    this._registryUnsubs.forEach((unsub) => { try { unsub(); } catch (e) {} });
+    this._registryUnsubs = [];
+  }
 
-  // --- Tastenkuerzel: Rueckgaengig / Kopieren / Einfuegen ---
+  _subscribeRegistry() {
+    if (typeof this._hass.connection?.subscribeEvents !== 'function') return;
+    const reload = () => {
+      clearTimeout(this._registryReloadTimer);
+      this._registryReloadTimer = setTimeout(() => this._loadIntegrationsData(), 1000);
+    };
+    for (const ev of ['entity_registry_updated', 'device_registry_updated', 'area_registry_updated']) {
+      this._hass.connection.subscribeEvents(reload, ev)
+        .then((unsub) => this._registryUnsubs.push(unsub))
+        .catch(() => {});
+    }
+  }
+
   _onKey(e) {
     const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target && e.target.tagName) || '');
     const meta = e.ctrlKey || e.metaKey;
@@ -919,17 +777,11 @@ class FlowCraftEditor extends HTMLElement {
     if (meta && e.key.toLowerCase() === 'v' && !typing) { e.preventDefault(); this._paste(); return; }
   }
 
-  // --- Persistenz ---
   async _load() {
     let flows = null;
-    try { const r = await this._hass.callWS({ type: 'frontend/get_user_data', key: STORE_KEY }); flows = r && r.value && r.value.flows; } catch (e) { /* ignore */ }
-    if (!flows) { try { flows = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { /* ignore */ } }
+    try { const r = await this._hass.callWS({ type: 'frontend/get_user_data', key: STORE_KEY }); flows = r && r.value && r.value.flows; } catch (e) {}
+    if (!flows) { try { flows = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) {} }
     this._flows = flows && flows.length ? flows : [sampleFlow()];
-    // Schutz gegen "verwaiste" Nodes: wenn ein Node-Typ zwischenzeitlich aus dem
-    // Editor entfernt wurde (z.B. ein alter Test-Node), wuerde T[n.type] undefined
-    // sein und beim Rendern (nh(), _outPos() usw.) zum kompletten Absturz des
-    // Editors fuehren ("leerer/schwarzer" Editor). Solche Nodes samt ihren
-    // Verbindungen hier beim Laden herausfiltern statt den Editor zu zerstoeren.
     let removed = 0;
     for (const f of this._flows) {
       if (!Array.isArray(f.nodes)) continue;
@@ -947,35 +799,30 @@ class FlowCraftEditor extends HTMLElement {
     clearTimeout(this._timer);
     this._timer = setTimeout(async () => {
       const value = { flows: this._flows };
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(value.flows)); } catch (e) { /* ignore */ }
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(value.flows)); } catch (e) {}
       try { await this._hass.callWS({ type: 'frontend/set_user_data', key: STORE_KEY, value }); } catch (e) { this._say('Speichern fehlgeschlagen: ' + (e.message || e), 1); }
     }, 500);
   }
   _say(t, err) { this._el.status.textContent = t; this._el.status.className = 'status' + (err ? ' err' : ''); }
 
-  // --- Integrationsauswahl fuer die Entitaetsfilter ---
   async _loadIntegrationsData() {
     try {
       this._registry = await this._hass.callWS({ type: 'config/entity_registry/list' });
     } catch (e) {
-      this._registry = null; // fail-open: keine Einschraenkung, wenn die Registry nicht geladen werden kann
+      this._registry = null;
     }
     let deviceReg = null;
     try {
       deviceReg = await this._hass.callWS({ type: 'config/device_registry/list' });
-    } catch (e) { /* ignore: dann eben ohne Hersteller-Anzeige */ }
+    } catch (e) {}
     let areaReg = null;
     try {
       areaReg = await this._hass.callWS({ type: 'config/area_registry/list' });
-    } catch (e) { /* ignore: dann eben ohne Raum-Anzeige */ }
+    } catch (e) {}
     const devById = {};
     if (deviceReg) for (const d of deviceReg) devById[d.id] = d;
     const areaById = {};
     if (areaReg) for (const a of areaReg) areaById[a.area_id] = a;
-    // Je Entitaet: Integration (platform), Hersteller/Modell des zugehoerigen
-    // Geraets sowie der Raum (Area) - fuer die Anzeige in der Entitaetsauswahl.
-    // Der Raum kann direkt an der Entitaet gesetzt sein (area_id) und ueberschreibt
-    // dann den Raum des Geraets, sonst gilt der Raum des zugehoerigen Geraets.
     this._entityMeta = {};
     if (this._registry) {
       for (const e of this._registry) {
@@ -1004,11 +851,9 @@ class FlowCraftEditor extends HTMLElement {
   }
   async _loadPlatformSelection() {
     let sel = null;
-    try { const r = await this._hass.callWS({ type: 'frontend/get_user_data', key: PLATFORMS_KEY }); sel = r && r.value && r.value.platforms; } catch (e) { /* ignore */ }
-    if (!sel) { try { sel = JSON.parse(localStorage.getItem(PLATFORMS_KEY) || 'null'); } catch (e) { /* ignore */ } }
+    try { const r = await this._hass.callWS({ type: 'frontend/get_user_data', key: PLATFORMS_KEY }); sel = r && r.value && r.value.platforms; } catch (e) {}
+    if (!sel) { try { sel = JSON.parse(localStorage.getItem(PLATFORMS_KEY) || 'null'); } catch (e) {} }
     if (!sel) {
-      // Noch keine eigene Auswahl gespeichert: Standardauswahl, aber nur soweit
-      // diese Integrationen tatsaechlich vorhanden sind.
       const present = new Set(this._allPlatforms.map((p) => p.id));
       sel = DEFAULT_PLATFORMS.filter((p) => present.has(p));
     }
@@ -1016,24 +861,20 @@ class FlowCraftEditor extends HTMLElement {
   }
   _savePlatforms() {
     const platforms = Array.from(this._selectedPlatforms);
-    try { localStorage.setItem(PLATFORMS_KEY, JSON.stringify(platforms)); } catch (e) { /* ignore */ }
-    this._hass.callWS({ type: 'frontend/set_user_data', key: PLATFORMS_KEY, value: { platforms } }).catch(() => { /* ignore */ });
+    try { localStorage.setItem(PLATFORMS_KEY, JSON.stringify(platforms)); } catch (e) {}
+    this._hass.callWS({ type: 'frontend/set_user_data', key: PLATFORMS_KEY, value: { platforms } }).catch(() => {});
   }
   _recomputeAllowed() {
-    if (!this._registry || !this._selectedPlatforms) { this._allowedIds = null; return; } // fail-open
+    if (!this._registry || !this._selectedPlatforms) { this._allowedIds = null; return; }
     this._allowedIds = new Set(this._registry.filter((e) => this._selectedPlatforms.has(e.platform)).map((e) => e.entity_id));
   }
 
-  // --- Verfuegbarkeitspruefung pro Baustein: generisch ueber die "d"-Domain-Liste
-  // der Pflicht-Entitaetsfelder eines Node-Typs, ohne Hardcodierung einzelner
-  // Entitaeten (siehe domainHasEntity oben) - so funktioniert das auch auf
-  // fremden HA-Installationen, auf denen FlowCraft spaeter laeuft.
   _typeAvailable(type) {
     const t = T[type];
     if (!t || !Array.isArray(t.fields)) return true;
     for (const f of t.fields) {
-      if (f.t !== 'entity' || !f.r) continue; // nur Pflichtfelder mit Entitaetsauswahl pruefen
-      if (!f.d || !f.d.length) continue; // kein Domain-Filter -> keine Einschraenkung moeglich
+      if (f.t !== 'entity' || !f.r) continue;
+      if (!f.d || !f.d.length) continue;
       if (!domainHasEntity(this._hass, f.d, f.dc)) return false;
     }
     return true;
@@ -1090,7 +931,6 @@ class FlowCraftEditor extends HTMLElement {
     };
   }
 
-  // --- Rueckgaengig (pro Flow) ---
   _snapshot() {
     const f = this._flow; if (!f) return;
     const st = this._undoStacks[f.id] || (this._undoStacks[f.id] = []);
@@ -1108,7 +948,6 @@ class FlowCraftEditor extends HTMLElement {
     this._say('Rueckgaengig gemacht');
   }
 
-  // --- Kopieren / Einfuegen ---
   _copy() {
     const f = this._flow; if (!f || !this._selSet.size) return;
     const ids = this._selSet;
@@ -1137,25 +976,21 @@ class FlowCraftEditor extends HTMLElement {
     this._say(`${newNodes.length} Node(s) eingefuegt`);
   }
 
-  // --- Anzeige ---
   _fillSelect() { this._el.sel.innerHTML = this._flows.map((f) => `<option value="${esc(f.id)}"${f.id === this._cur ? ' selected' : ''}>${esc(f.name || f.id)}</option>`).join(''); }
   _refresh() {
     this._fillSelect();
     const f = this._flow;
     this._el.name.value = f ? f.name : ''; this._el.en.checked = !!(f && f.enabled);
     this._el.prev.hidden = true;
-    this._activeNodeId = null; this._activePrevId = null; // laufende Simulations-Hervorhebung beim Flow-Wechsel zuruecksetzen
+    this._activeNodeId = null; this._activePrevId = null;
     this._render(); this._renderIns();
   }
-  _outPos(n, o) { const h = nh(n); return [n.x + NW, n.y + (T[n.type] && T[n.type].cat === 'cond' ? [h * 0.3, h * 0.7][o] : h / 2)]; }
+  _outPos(n, o) { const h = nh(n), t = T[n.type]; return [n.x + NW, n.y + (t && (t.cat === 'cond' || t.twoOut) ? [h * 0.3, h * 0.7][o] : h / 2)]; }
   _friendly(id) {
     if (!id) return '';
     const s = this._hass && this._hass.states[id];
     return s ? (s.attributes.friendly_name || id) : id;
   }
-  // Liefert den aktuellen Ist-Wert einer Entitaet als kurzen, lesbaren Text
-  // (fuer die dritte Zeile bei Aktor-Nodes auf dem Canvas), z.B. "An", "Aus",
-  // "42 %" oder "unbekannt" - ohne HA-Verbindung/Entitaet leerer String.
   _actValue(id) {
     if (!id) return '';
     const s = this._hass && this._hass.states[id];
@@ -1176,9 +1011,6 @@ class FlowCraftEditor extends HTMLElement {
     if (m.manufacturer && /ikea/i.test(m.manufacturer)) return IKEA_STYLE;
     if (!m.platform) return null;
     if (PLATFORM_STYLE[m.platform]) return PLATFORM_STYLE[m.platform];
-    // Keine fest hinterlegte Farbe fuer diese Integration: automatisch eine
-    // eigene, aus dem Integrationsnamen errechnete Farbe vergeben, damit
-    // wirklich jede Integration anders (aber konsistent) aussieht.
     return { color: `hsl(${hashHue(m.platform)}, 62%, 38%)`, icon: '●' };
   }
   _render() {
@@ -1189,8 +1021,6 @@ class FlowCraftEditor extends HTMLElement {
     f.wires.forEach((w, i) => {
       const a = byId[w.from], b = byId[w.to]; if (!a || !b) return;
       const [x1, y1] = this._outPos(a, w.out || 0);
-      // Waehrend "🔍 Simulieren" laeuft: die Verbindung, ueber die der gerade
-      // aktive Node erreicht wurde, gelb mit laufender Strich-Animation zeigen.
       const activeWire = this._activeNodeId && w.to === this._activeNodeId && w.from === this._activePrevId;
       h += `<path class="wire${activeWire ? ' active' : ''}" data-wire="${i}" d="${curve(x1, y1, b.x, b.y + nh(b) / 2)}"><title>Klicken zum Loeschen</title></path>`;
     });
@@ -1198,29 +1028,19 @@ class FlowCraftEditor extends HTMLElement {
     for (const n of f.nodes) {
       const t = T[n.type]; if (!t) continue;
       const hh = nh(n), gap = catGap(n), showVal = nhShowsVal(n);
-      // Sub-Text auf zwei Zeilen aufteilen: Node-Typen mit Entitaetsbezug
-      // (siehe subParts()) trennen bewusst nach Sensor/Entitaet (Zeile 1) und
-      // Vergleichswerten/Zustand (Zeile 2); alle anderen werden bei Bedarf an
-      // einer Wortgrenze umgebrochen - so bleibt z.B. bei "Wert-Vergleich"
-      // sowohl der Sensorname als auch die eingestellten Schwellwerte lesbar.
       const [subL1, subL2] = subParts(t, n.cfg || {}, (id) => this._friendly(id), 33);
-      const subY1 = 19 + gap, subY2 = subY1 + LINE_H;
-      // Titelzeile (Icon + Label) ebenfalls kuerzen, damit lange Node-Namen den
-      // 220px breiten Rahmen nicht ueberragen (analog zur Sub-Text-Kuerzung oben).
+      const subY1 = 19 + gap, subY2 = subY1 + gap;
       const ttl = t.label.length > 28 ? t.label.slice(0, 27) + '…' : t.label;
-      // Waehrend "🔍 Simulieren" laeuft: den gerade abgearbeiteten Node gelb
-      // umranden/leuchten lassen und seine Anschluss-Punkte pulsieren lassen.
       const isActive = n.id === this._activeNodeId;
       h += `<g class="node${this._selSet.has(n.id) ? ' sel' : ''}${isActive ? ' active' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})">
         <rect class="body" width="${NW}" height="${hh}" rx="7" fill="${t.color}"/>
         <text class="nt" x="10" y="19">${t.icon} ${esc(ttl)}</text><text class="ns" x="10" y="${subY1}">${esc(subL1)}</text>${subL2 ? `<text class="ns" x="10" y="${subY2}">${esc(subL2)}</text>` : ''}`;
-      // Dritte Zeile: aktueller Ist-Wert der Ziel-Entitaet bei Aktor-Nodes
-      // (z.B. "Aktuell: An" / "Aktuell: 42 %"), damit man auf einen Blick sieht,
-      // ob ein Geraet schon im Zielzustand ist, ohne den Node zu oeffnen.
       if (showVal) h += `<text class="nv" x="10" y="${hh - 9}">Aktuell: ${esc(this._actValue(nhEntity(n)) || '–')}</text>`;
       if (t.cat !== 'trigger') h += `<circle class="port" data-in="${n.id}" cx="0" cy="${hh / 2}" r="6"/>`;
-      if (t.cat === 'cond') h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${hh * 0.3}" r="6"/><circle class="port" data-out="${n.id}" data-o="1" cx="${NW}" cy="${hh * 0.7}" r="6"/><text class="plab" x="${NW - 30}" y="${hh * 0.3 + 3}">Ja</text><text class="plab" x="${NW - 38}" y="${hh * 0.7 + 3}">Nein</text>`;
-      else h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${hh / 2}" r="6"/>`;
+      if (t.cat === 'cond' || t.twoOut) {
+        const [l0, l1] = t.outLabels || ['Ja', 'Nein'];
+        h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${hh * 0.3}" r="6"/><circle class="port" data-out="${n.id}" data-o="1" cx="${NW}" cy="${hh * 0.7}" r="6"/><text class="plab" text-anchor="end" x="${NW - 12}" y="${hh * 0.3 + 3}">${esc(l0)}</text><text class="plab" text-anchor="end" x="${NW - 12}" y="${hh * 0.7 + 3}">${esc(l1)}</text>`;
+      } else h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${hh / 2}" r="6"/>`;
       h += '</g>';
     }
     if (this._band) {
@@ -1232,7 +1052,6 @@ class FlowCraftEditor extends HTMLElement {
   }
   _pt(e) { const r = this._el.cv.getBoundingClientRect(); return [e.clientX - r.left + this._el.cv.scrollLeft, e.clientY - r.top + this._el.cv.scrollTop]; }
 
-  // --- Interaktion ---
   _down(e) {
     const f = this._flow; if (!f) return;
     const out = e.target.closest('[data-out]'), wire = e.target.closest('[data-wire]'), node = e.target.closest('.node');
@@ -1254,7 +1073,7 @@ class FlowCraftEditor extends HTMLElement {
       this._drag = { anchors };
       this._render(); this._renderIns(); this._el.cv.focus(); e.preventDefault(); return;
     }
-    if (e.shiftKey) return; // Shift-Klick auf leere Flaeche: Auswahl unveraendert lassen
+    if (e.shiftKey) return;
     this._band = { x0: x, y0: y, x1: x, y1: y };
     this._sel = null; this._selSet = new Set(); this._render(); this._renderIns();
   }
@@ -1273,14 +1092,6 @@ class FlowCraftEditor extends HTMLElement {
     this._render();
   }
   _end(e) {
-    // Wichtig: this._up haengt am WINDOW (fuer Drag/Verbinden/Rahmen ausserhalb des
-    // Canvas), feuert also bei JEDEM Loslassen der Maustaste irgendwo im Fenster -
-    // auch z.B. beim Waehlen eines Eintrags in einem Entitaets-Dropdown im
-    // Inspektor. Ohne diese Wache wurde unten IMMER _renderIns() aufgerufen und
-    // damit der Inspektor (inkl. gerade geoeffnetem <select>) neu aufgebaut,
-    // wodurch die native Auswahlliste mitten in der Auswahl verschwand ("Auswahl
-    // springt weg"). Nur re-rendern, wenn tatsaechlich gezogen/verbunden/eine
-    // Markierung aufgezogen wurde.
     if (!this._drag && !this._conn && !this._band) return;
     const f = this._flow;
     if (this._conn && f) {
@@ -1330,7 +1141,6 @@ class FlowCraftEditor extends HTMLElement {
     this._save(); this._render(); this._renderIns();
   }
 
-  // --- Inspektor ---
   _entityIds(domains, deviceClasses, skipAllowed) {
     return Object.keys(this._hass.states).filter((id) => {
       if (domains && !domains.includes(dom(id))) return false;
@@ -1338,9 +1148,6 @@ class FlowCraftEditor extends HTMLElement {
         const s = this._hass.states[id];
         if (!deviceClasses.includes((s.attributes || {}).device_class)) return false;
       }
-      // sun.sun gehoert zu keiner Integration (kein Eintrag in der Entity-Registry) und
-      // wird u.a. bei "Wert-Vergleich" fuer Sonnenhoehen-Vergleiche genutzt - daher vom
-      // Integrationen-Filter ausnehmen, sonst wuerde es dort einfach verschwinden.
       if (!skipAllowed && this._allowedIds && dom(id) !== 'sun' && !HELPER_DOMAINS.includes(dom(id)) && !this._allowedIds.has(id)) return false;
       return true;
     }).sort();
@@ -1357,9 +1164,6 @@ class FlowCraftEditor extends HTMLElement {
     let h = `<h3>${t.icon} ${esc(t.label)}</h3>`;
     t.fields.forEach((fl) => {
       const v = c[fl.k] ?? fl.v ?? '';
-      // unitFrom: zeigt hinter dem Feldnamen die Einheit der aktuell im Feld
-      // 'entity' (o.ae.) gewaehlten Sensor-Entitaet an, z.B. "Ueber (W)" statt
-      // nur "Ueber" - damit klar ist, in welcher Einheit der Wert einzugeben ist.
       let labelText = fl.l;
       if (fl.unitFrom) {
         const u = this._unit(c[fl.unitFrom]);
@@ -1369,7 +1173,7 @@ class FlowCraftEditor extends HTMLElement {
       if (fl.t === 'select') h += `<select data-k="${fl.k}">${fl.o.map(([val, lab]) => `<option value="${esc(val)}"${String(v) === val ? ' selected' : ''}>${esc(lab)}</option>`).join('')}</select>`;
       else if (fl.t === 'days') h += `<div class="days">${DAYS.map(([d, l]) => `<label><input type="checkbox" data-day="${d}"${(c.days || fl.v).includes(d) ? ' checked' : ''}> ${l}</label>`).join('')}</div>`;
       else if (fl.t === 'entity') {
-        const skipInt = !fl.filterInt; // Integrationen-Filter nur fuer geraetespezifische Felder (Bewegungsmelder, Helligkeitssensor, Taste, Geraet schalten)
+        const skipInt = !fl.filterInt;
         let ids = this._entityIds(fl.d, fl.dc, skipInt);
         let note = '';
         if (fl.dc && !ids.length) {
@@ -1385,9 +1189,6 @@ class FlowCraftEditor extends HTMLElement {
         }
         const opts = ids.map((id) => [id, this._friendly(id), this._integrationLabel(id), this._unit(id), this._platformStyle(id), this._areaLabel(id)]);
         if (v && !ids.includes(v)) opts.unshift([v, `${this._friendly(v)} (nicht gefunden)`, this._integrationLabel(v), this._unit(v), this._platformStyle(v), this._areaLabel(v)]);
-        // Zuerst nach Hersteller/Integration gruppieren (als <optgroup>), innerhalb
-        // einer Gruppe alphabetisch nach Name; Entitaeten ohne bekannten Hersteller
-        // landen in einer eigenen Gruppe.
         const byBadge = new Map();
         for (const opt of opts) {
           const key = opt[2] || 'Ohne Integration';
@@ -1399,9 +1200,6 @@ class FlowCraftEditor extends HTMLElement {
         const optionsHtml = badgeKeys.map((bk) => {
           const items = byBadge.get(bk).map(([id, lab, badge, unit, style, area]) => {
             const labU = unit ? `${lab} (${unit})` : lab;
-            // Raum in eckigen Klammern hinter den Namen (bzw. hinter die Einheit),
-            // damit auf einen Blick erkennbar ist, in welchem Zimmer die Entitaet
-            // steht - Entitaeten ohne zugewiesenen Raum bleiben ohne Zusatz.
             const labA = area ? `${labU} [${area}]` : labU;
             const icon = style ? style.icon + ' ' : '';
             const colorAttr = style ? ` style="color:${style.color}"` : '';
@@ -1412,8 +1210,6 @@ class FlowCraftEditor extends HTMLElement {
         h += `<select data-k="${fl.k}"><option value="">- waehlen -</option>${optionsHtml}</select>${note}<div class="hint" data-hint="${fl.k}">${this._hintFor(v)}</div>`;
       }
       else if (fl.t === 'notify_service') {
-        // Listet die verfuegbaren notify.* Dienste (z.B. Mobile-App-Geraete) dynamisch
-        // aus den HA-Services, statt den Dienstnamen von Hand eintippen zu lassen.
         const all = (this._hass.services && this._hass.services.notify) ? Object.keys(this._hass.services.notify) : [];
         const svcs = all.filter((s) => s !== 'notify' && s !== 'persistent_notification' && s !== 'send_message').sort();
         const note = svcs.length ? '' : '<div class="hint">Keine Push-Dienste gefunden. In HA unter Mobile App / Companion App einrichten.</div>';
@@ -1450,28 +1246,47 @@ class FlowCraftEditor extends HTMLElement {
       entityChanged = fl && fl.t === 'entity';
     } else return;
     this._save(); this._render();
-    // Wenn eine Sensor-Entitaet gewaehlt wurde, den Inspektor neu aufbauen, damit
-    // Felder mit unitFrom (z.B. "Ueber (W)"/"Unter (W)") sofort die Einheit der
-    // neu gewaehlten Entitaet anzeigen.
     if (entityChanged) this._renderIns();
   }
 
-  // --- Deploy ---
   _preview() {
     const f = this._flow, p = this._el.prev, v = validate(f);
     try { p.textContent = JSON.stringify(compileFlow(f), null, 2) + (v.warnings.length ? '\n\nHinweise:\n- ' + v.warnings.join('\n- ') : '') + (v.errors.length ? '\n\nFehler:\n- ' + v.errors.join('\n- ') : ''); } catch (err) { p.textContent = 'Fehler: ' + err.message; }
     p.hidden = !p.hidden;
   }
-  // Setzt per WebSocket-Befehl "homeassistant/expose_entity" die Sprachassistenten-
-  // Freigabe (Einstellungen -> Sprachassistenten -> Alexa) fuer die uebergebenen
-  // Entitaeten - genau das, was man sonst manuell als Schieberegler pro Entitaet
-  // umlegen wuerde. Nur relevant, wenn Home Assistant Cloud (Nabu Casa) + Alexa
-  // ueberhaupt eingerichtet sind; ist das nicht der Fall, schlaegt der Aufruf
-  // fehl und wird stillschweigend ignoriert (Skript bleibt trotzdem nutzbar,
-  // nur eben nicht automatisch bei Alexa freigegeben).
   async _setAlexaExposed(entityIds, expose) {
     if (!entityIds.length || typeof this._hass.callWS !== 'function') return;
-    try { await this._hass.callWS({ type: 'homeassistant/expose_entity', assistants: ['cloud.alexa'], entity_ids: entityIds, should_expose: expose }); } catch (e) { /* Cloud/Alexa nicht eingerichtet o.ae. - ignorieren */ }
+    try { await this._hass.callWS({ type: 'homeassistant/expose_entity', assistants: ['cloud.alexa'], entity_ids: entityIds, should_expose: expose }); } catch (e) {}
+  }
+  async _ensureSwitchHelper(flow, node, name) {
+    if (!node) return null;
+    const cfg = node.cfg || (node.cfg = {});
+    flow.deployedSwitchHelpers = flow.deployedSwitchHelpers || {};
+    if (cfg._helperEntity && this._hass.states[cfg._helperEntity]) {
+      const bareId = cfg._helperEntity.split('.')[1];
+      try { await this._hass.callWS({ type: 'input_boolean/update', input_boolean_id: bareId, name }); } catch (e) {}
+      flow.deployedSwitchHelpers[node.id] = cfg._helperEntity;
+      return cfg._helperEntity;
+    }
+    try {
+      const r = await this._hass.callWS({ type: 'input_boolean/create', name, icon: 'mdi:amazon-alexa' });
+      const entityId = 'input_boolean.' + r.id;
+      cfg._helperEntity = entityId;
+      flow.deployedSwitchHelpers[node.id] = entityId;
+      return entityId;
+    } catch (e) {
+      this._say('Alexa-Schalter-Helfer "' + name + '" konnte nicht angelegt werden: ' + ((e && e.message) || e), 1);
+      return null;
+    }
+  }
+  async _removeSwitchHelper(nodeId, helperEntity) {
+    if (helperEntity) {
+      await this._setAlexaExposed([helperEntity], false);
+      try { await this._hass.callWS({ type: 'input_boolean/delete', input_boolean_id: helperEntity.split('.')[1] }); } catch (e) {}
+    }
+    try { await this._hass.callApi('DELETE', 'config/automation/config/flowcraft_alexasw_' + nodeId); } catch (e) {}
+    try { await this._hass.callApi('DELETE', 'config/script/config/flowcraft_alexasw_on_' + nodeId); } catch (e) {}
+    try { await this._hass.callApi('DELETE', 'config/script/config/flowcraft_alexasw_off_' + nodeId); } catch (e) {}
   }
   async _deploy() {
     const f = this._flow, v = validate(f);
@@ -1481,71 +1296,70 @@ class FlowCraftEditor extends HTMLElement {
     try {
       this._say('Deploy laeuft ...');
       if (result.automation) await this._hass.callApi('POST', 'config/automation/config/' + result.automation.id, result.automation);
-      // Jeder Alexa-Sprachbefehl-Node wird als eigenstaendiges HA-Skript deployt
-      // (siehe compileFlow) - Alexa kann Skripte direkt per Namen ansprechen,
-      // ganz ohne Helfer oder manuell angelegte Routine.
-      for (const s of result.scripts) await this._hass.callApi('POST', 'config/script/config/' + s.id, s.cfg);
-      // Alexa-Sprachbefehl-Nodes, die seit dem letzten Deploy aus dem Flow entfernt
-      // (oder von ihrer Aktionskette abgehaengt) wurden: zugehoeriges Skript wieder
-      // entfernen und die Alexa-Freigabe zurueknehmen, damit keine verwaisten
-      // Eintraege liegen bleiben.
-      const curIds = result.scripts.map((s) => s.nodeId);
-      const removedIds = (f.deployedAlexaIds || []).filter((id) => !curIds.includes(id));
-      for (const id of removedIds) {
-        await this._setAlexaExposed(['script.flowcraft_alexa_' + id], false);
-        try { await this._hass.callApi('DELETE', 'config/script/config/flowcraft_alexa_' + id); } catch (e) { /* bereits weg */ }
+      let switchCount = 0;
+      for (const sw of result.switches) {
+        const node = f.nodes.find((n) => n.id === sw.nodeId);
+        const helperId = await this._ensureSwitchHelper(f, node, sw.name);
+        if (!helperId) continue;
+        await this._hass.callApi('POST', 'config/script/config/' + sw.onScript.id, sw.onScript.cfg);
+        await this._hass.callApi('POST', 'config/script/config/' + sw.offScript.id, sw.offScript.cfg);
+        const autoId = 'flowcraft_alexasw_' + sw.nodeId;
+        await this._hass.callApi('POST', 'config/automation/config/' + autoId, {
+          id: autoId,
+          alias: 'FlowCraft Alexa-Schalter: ' + sw.name,
+          description: 'Erzeugt von FlowCraft (Alexa-Schalter-Node). Aenderungen bitte in FlowCraft machen, sie werden beim naechsten Deploy ueberschrieben.',
+          triggers: [
+            { trigger: 'state', entity_id: helperId, to: 'on', id: 'on' },
+            { trigger: 'state', entity_id: helperId, to: 'off', id: 'off' },
+          ],
+          conditions: [],
+          actions: [{ choose: [
+            { conditions: [{ condition: 'trigger', id: 'on' }], sequence: [{ action: 'script.turn_on', target: { entity_id: 'script.' + sw.onScript.id } }] },
+            { conditions: [{ condition: 'trigger', id: 'off' }], sequence: [{ action: 'script.turn_on', target: { entity_id: 'script.' + sw.offScript.id } }] },
+          ] }],
+          mode: 'queued',
+        });
+        await this._setAlexaExposed([helperId], true);
+        switchCount++;
       }
+      const curSwitchIds = result.switches.map((s) => s.nodeId);
+      const deployedHelpers = f.deployedSwitchHelpers || {};
+      const removedSwitchIds = Object.keys(deployedHelpers).filter((id) => !curSwitchIds.includes(id));
+      for (const id of removedSwitchIds) { await this._removeSwitchHelper(id, deployedHelpers[id]); delete deployedHelpers[id]; }
+      f.deployedSwitchHelpers = deployedHelpers;
       if (result.automation) await this._hass.callService('automation', 'reload');
-      if (result.scripts.length || removedIds.length) await this._hass.callService('script', 'reload');
-      // Neue/aktualisierte Alexa-Skripte automatisch bei Alexa freigeben (entspricht
-      // dem manuellen Schieberegler unter Einstellungen -> Sprachassistenten ->
-      // Alexa). Ersetzt NICHT das einmalige "Alexa, entdecke Geraete neu" fuer
-      // Skripte, die Alexa noch nie zuvor gemeldet wurden - das kann nur von
-      // Alexa-Seite (Sprachbefehl oder App) ausgeloest werden, nicht von HA aus.
-      if (result.scripts.length) await this._setAlexaExposed(result.scripts.map((s) => 'script.' + s.id), true);
+      if (switchCount || removedSwitchIds.length) {
+        await this._hass.callService('script', 'reload');
+        await this._hass.callService('automation', 'reload');
+      }
       await sleep(1500);
       if (result.automation) {
         const st = Object.values(this._hass.states).find((s) => s.entity_id.startsWith('automation.') && s.attributes.id === result.automation.id);
         if (st) await this._hass.callService('automation', f.enabled ? 'turn_on' : 'turn_off', { entity_id: st.entity_id });
       }
-      f.deployedAlexaIds = curIds;
       f.deployedAt = new Date().toISOString(); this._save();
       const t = new Date().toLocaleTimeString('de-DE');
-      const scriptNote = result.scripts.length ? ` - ${result.scripts.length} Alexa-Skript(e) aktualisiert und bei Alexa freigegeben (erscheint bei Alexa idR. automatisch, wie bei neuen Matter-Geraeten - taucht es nach ein paar Minuten nicht auf: einmalig „Alexa, entdecke Geraete neu“ sagen)` : '';
-      const removedNote = removedIds.length ? ` - ${removedIds.length} entfernte(s) Alexa-Skript(e) geloescht und Alexa-Freigabe zurueckgenommen` : '';
-      this._say(`Deployed ${t}${scriptNote}${removedNote}${v.warnings.length ? ' (' + v.warnings.length + ' Hinweis/e, siehe Vorschau)' : ''}`);
+      const switchNote = switchCount ? ` - ${switchCount} Alexa-Schalter aktualisiert und bei Alexa freigegeben (natives "an"/"aus", erscheint idR. automatisch bei Alexa)` : '';
+      const removedSwitchNote = removedSwitchIds.length ? ` - ${removedSwitchIds.length} entfernte(r) Alexa-Schalter geloescht und Alexa-Freigabe zurueckgenommen` : '';
+      this._say(`Deployed ${t}${switchNote}${removedSwitchNote}${v.warnings.length ? ' (' + v.warnings.length + ' Hinweis/e, siehe Vorschau)' : ''}`);
     } catch (err) { this._say('Deploy fehlgeschlagen: ' + ((err && (err.body && err.body.message || err.message)) || err), 1); }
   }
-  // Fuehrt die bereits deployte Automation bzw. alle Alexa-Skripte dieses Flows
-  // einmal manuell aus - ganz ohne extra Helfer oder Test-Node im Flow.
-  // skip_condition:false sorgt bei der Automation dafuer, dass dabei alle
-  // Bedingungen (Falls/Dann) ganz normal mit den aktuellen echten Werten geprueft
-  // werden, genau wie bei einem echten Ausloeser - praktisch zum Debuggen per Knopfdruck.
   async _testRun() {
     const f = this._flow;
     if (!f) return;
     let result = null;
-    try { result = compileFlow(f); } catch (e) { /* ignore - unten wird trotzdem nach bereits deployten Entitaeten gesucht */ }
+    try { result = compileFlow(f); } catch (e) {}
     const autoSt = Object.values(this._hass.states).find((s) => s.entity_id.startsWith('automation.') && s.attributes.id === 'flowcraft_' + f.id);
-    const scriptEnts = (result && result.scripts || []).map((s) => 'script.' + s.id).filter((id) => this._hass.states[id]);
-    if (!autoSt && !scriptEnts.length) { this._say('Bitte zuerst „Deploy" klicken, danach kann getestet werden.', 1); return; }
+    const switchOnEnts = (result && result.switches || []).map((s) => 'script.' + s.onScript.id).filter((id) => this._hass.states[id]);
+    if (!autoSt && !switchOnEnts.length) { this._say('Bitte zuerst „Deploy" klicken, danach kann getestet werden.', 1); return; }
     try {
       this._say('Test laeuft ...');
       if (autoSt) await this._hass.callService('automation', 'trigger', { entity_id: autoSt.entity_id, skip_condition: false });
-      for (const id of scriptEnts) await this._hass.callService('script', 'turn_on', { entity_id: id });
+      for (const id of switchOnEnts) await this._hass.callService('script', 'turn_on', { entity_id: id });
       const t = new Date().toLocaleTimeString('de-DE');
       this._say(`Test ausgefuehrt ${t} - Bedingungen wurden mit den aktuellen echten Werten geprueft.`);
     } catch (err) { this._say('Test fehlgeschlagen: ' + ((err && (err.body && err.body.message || err.message)) || err), 1); }
   }
-  // Simuliert diesen einen Flow mit den aktuellen echten hass.states, OHNE dabei
-  // irgendeinen Service (Geraet schalten, Benachrichtigung, usw.) tatsaechlich
-  // aufzurufen - zeigt stattdessen Schritt fuer Schritt in der Vorschau, welchen
-  // Weg der Flow nehmen wuerde (z.B. "Ist es dunkel? -> JA -> Geraet schalten ->
-  // Verzoegerung -> Geraet schalten"). Nuetzlich, um vor einem echten Test zu
-  // pruefen, ob die Bedingungen wie erwartet auswerten.
-  // Liefert je erreichtem Node ein {id, text}-Objekt (statt nur Text), damit
-  // _simulate() beim Abspielen weiss, WELCHER Node gerade auf dem Canvas
-  // hervorgehoben werden soll.
   _outsTrace(id, o, path) {
     const f = this._flow;
     return f.wires.filter((w) => w.from === id && (w.out || 0) === o)
@@ -1568,13 +1382,8 @@ class FlowCraftEditor extends HTMLElement {
     const act = t.act(c);
     return [{ id: n.id, text: `${t.icon} ${t.label} (${subFlat(t, c, L)}) — wuerde ausgefuehrt [SIMULIERT, nicht gesendet]: ${JSON.stringify(act)}` }, ...this._outsTrace(n.id, 0, p)];
   }
-  // Spielt die Simulation Schritt fuer Schritt ab: pro erreichtem Node wird
-  // dieser (samt der Verbindung, ueber die er erreicht wurde) auf dem Canvas
-  // gelb hervorgehoben/animiert (siehe _render()/CSS .active), waehrend
-  // parallel der Text-Trace darunter waechst - danach kurze Pause, dann
-  // weiter zum naechsten Node. Am Ende wird die Hervorhebung entfernt.
   async _simulate() {
-    if (this._simRunning) return; // keine zwei Simulationen gleichzeitig
+    if (this._simRunning) return;
     const f = this._flow, v = validate(f);
     if (v.errors.length) { this._say(v.errors[0], 1); return; }
     const triggers = f.nodes.filter((n) => T[n.type] && T[n.type].cat === 'trigger');
@@ -1584,6 +1393,21 @@ class FlowCraftEditor extends HTMLElement {
     let out = `Simulation von „${f.name}“ (${new Date().toLocaleTimeString('de-DE')}) - es wird NICHTS an Geraete gesendet:\n`;
     this._el.prev.textContent = out;
     this._say('Simulation laeuft ... (Ablauf wird auf dem Canvas animiert)');
+    const playBranch = async (tr, o, label) => {
+      if (label) { out += `(Zweig „${label}“)\n`; this._el.prev.textContent = out; }
+      const steps = this._outsTrace(tr.id, o, [tr.id]);
+      if (!steps.length) { out += '(nicht verbunden)\n'; this._el.prev.textContent = out; return; }
+      let prevId = tr.id;
+      for (let i = 0; i < steps.length; i++) {
+        const st = steps[i];
+        this._activeNodeId = st.id; this._activePrevId = prevId; this._render();
+        out += `${i + 1}. ${st.text}\n`;
+        this._el.prev.textContent = out;
+        this._el.prev.scrollTop = this._el.prev.scrollHeight;
+        await sleep(900);
+        prevId = st.id;
+      }
+    };
     try {
       for (const tr of triggers) {
         const t = T[tr.type];
@@ -1591,17 +1415,12 @@ class FlowCraftEditor extends HTMLElement {
         this._el.prev.textContent = out;
         this._activeNodeId = tr.id; this._activePrevId = null; this._render();
         await sleep(700);
-        const steps = this._outsTrace(tr.id, 0, [tr.id]);
-        if (!steps.length) { out += '(nicht verbunden)\n'; this._el.prev.textContent = out; }
-        let prevId = tr.id;
-        for (let i = 0; i < steps.length; i++) {
-          const st = steps[i];
-          this._activeNodeId = st.id; this._activePrevId = prevId; this._render();
-          out += `${i + 1}. ${st.text}\n`;
-          this._el.prev.textContent = out;
-          this._el.prev.scrollTop = this._el.prev.scrollHeight;
-          await sleep(900);
-          prevId = st.id;
+        if (t.twoOut) {
+          const [l0, l1] = t.outLabels || ['Ja', 'Nein'];
+          await playBranch(tr, 0, l0);
+          await playBranch(tr, 1, l1);
+        } else {
+          await playBranch(tr, 0, null);
         }
       }
       this._say('Simulation abgeschlossen - keine Aktoren angesprochen (siehe Vorschau unten)');
@@ -1612,17 +1431,12 @@ class FlowCraftEditor extends HTMLElement {
   }
   async _deleteFlow() {
     const f = this._flow; if (!f || !confirm(`Flow „${f.name}“ und die zugehoerige Automation/Skripte loeschen?`)) return;
-    try { await this._hass.callApi('DELETE', 'config/automation/config/flowcraft_' + f.id); } catch (e) { /* nie deployed */ }
-    // Jeden per Alexa-Sprachbefehl-Node deployten Skript-Eintrag mit entfernen,
-    // damit beim Loeschen eines Flows keine verwaisten Alexa-Skripte zurueckbleiben.
-    for (const n of f.nodes) {
-      if (T[n.type] && T[n.type].asScript) {
-        await this._setAlexaExposed(['script.flowcraft_alexa_' + n.id], false);
-        try { await this._hass.callApi('DELETE', 'config/script/config/flowcraft_alexa_' + n.id); } catch (e) { /* nie deployed */ }
-      }
+    try { await this._hass.callApi('DELETE', 'config/automation/config/flowcraft_' + f.id); } catch (e) {}
+    for (const [nodeId, helperEntity] of Object.entries(f.deployedSwitchHelpers || {})) {
+      await this._removeSwitchHelper(nodeId, helperEntity);
     }
-    try { await this._hass.callService('automation', 'reload'); } catch (e) { /* ignore */ }
-    try { await this._hass.callService('script', 'reload'); } catch (e) { /* ignore */ }
+    try { await this._hass.callService('automation', 'reload'); } catch (e) {}
+    try { await this._hass.callService('script', 'reload'); } catch (e) {}
     this._flows = this._flows.filter((x) => x.id !== f.id);
     if (!this._flows.length) this._flows.push({ id: 'f' + Date.now().toString(36), name: 'Neuer Flow', enabled: true, seq: 0, nodes: [], wires: [] });
     this._cur = this._flows[0].id; this._sel = null; this._selSet = new Set(); this._save(); this._refresh();

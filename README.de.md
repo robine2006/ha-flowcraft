@@ -21,7 +21,7 @@ nach dem Muster:
 
 Wenn du auf **„Deploy“** klickst, übersetzt die Karte deinen selbst
 gebauten Ablauf automatisch in eine ganz normale Home-Assistant-Automation
-(oder bei Alexa-Sprachbefehlen in ein Skript) und legt sie in Home Assistant
+(oder beim Alexa-Schalter in Skripte plus einen Helfer) und legt sie in Home Assistant
 an. Du musst also **kein YAML schreiben** – die Karte erledigt das für dich
 im Hintergrund. Es läuft dabei kein separater Dienst oder Add-on mit: das
 Ergebnis ist eine ganz normale Automation/ein normales Skript, das komplett
@@ -137,41 +137,13 @@ erkannt wird.
 | 🔘 **Taste/Fernbedienung** | Startet bei einem Tastendruck-Ereignis (z. B. Zigbee-Fernbedienung) | Event-Entität, Ereignistyp |
 | 📍 **Zone betreten/verlassen** | Startet, wenn eine Person eine Zone betritt/verlässt (Standort) | Person, Zone, Ereignis |
 | 📆 **Kalender-Ereignis** | Startet, wenn ein Kalendertermin beginnt/endet (optional nur bei bestimmtem Titel) | Kalender, Ereignis, Versatz, Titel-Filter |
-| 🗣️ **Alexa-Sprachbefehl** | Erzeugt **kein** Trigger in einer Automation, sondern ein eigenständiges HA-**Skript**, das Alexa per Sprache direkt starten kann | Name für Alexa (z. B. „Schlafzimmerlicht an“) |
+| 🔛 **Alexa-Schalter (An/Aus)** | Hat **zwei Ausgänge**: „Ein“ (oben) für die Einschalt-Aktionen, „Aus“ (unten) für die Ausschalt-Aktionen. Siehe Kasten unten. | Name für Alexa (z. B. „Morgenlicht“) |
 
 > Ein Flow kann auch **mehrere** Auslöser-Bausteine gleichzeitig enthalten –
 > jeder davon kann (unabhängig) denselben oder einen eigenen Ablauf
 > auslösen.
 
-> ⚠️ **Wichtig beim Alexa-Sprachbefehl: Es gibt kein „An“/„Aus“ am Baustein selbst.**
-> Das erzeugte HA-Skript kennt kein „An“ oder „Aus“ – es führt bei jedem Aufruf
-> immer nur **einmal** die daran angeschlossene Aktionskette aus, von oben nach
-> unten. Home Assistant meldet ein Skript an Alexa als **Szene**, und eine Szene
-> kann Alexa nur **aktivieren** – nicht deaktivieren. Das bedeutet konkret:
-> - „Alexa, schalte **Schlafzimmerlicht an**“ → funktioniert, das Skript läuft.
-> - „Alexa, schalte **Schlafzimmerlicht aus**“ → Alexa antwortet zwar meist mit
->   „ok“, aber in Home Assistant passiert **nichts** – es gibt keine „Aus“-Sequenz,
->   die dabei ausgelöst wird.
->
-> **Lösung:** Für echtes Ein- **und** Ausschalten per Sprache legst du **zwei
-> getrennte** Alexa-Sprachbefehl-Bausteine mit unterschiedlichem Namen an, z. B.:
-> - Baustein 1: Name „**Schlafzimmerlicht an**“ → Aktion „Einschalten“
-> - Baustein 2: Name „**Schlafzimmerlicht aus**“ → Aktion „Ausschalten“
->
-> Beide erzeugen jeweils ihr eigenes HA-Skript und lassen sich unabhängig
-> voneinander per Sprache aufrufen.
-
-> ℹ️ **Die Alexa-Freigabe passiert automatisch.** Bei jedem Klick auf
-> „Deploy“ wird jedes Alexa-Sprachbefehl-Skript automatisch bei Alexa
-> freigegeben (kein manuelles Umlegen eines Schiebereglers unter
-> „Einstellungen → Sprachassistenten → Alexa“ nötig). Löschst du einen
-> Alexa-Sprachbefehl-Baustein (oder den ganzen Flow), wird die Freigabe
-> automatisch zurückgenommen und das Skript mit entfernt – es bleiben also
-> keine verwaisten Einträge zurück. Das neue Skript taucht danach in aller
-> Regel von selbst bei Alexa auf, genau wie ein neues Matter-Gerät. Nur
-> falls es nach ein paar Minuten ausnahmsweise doch nicht erscheint, hilft
-> als Fallback einmalig „**Alexa, entdecke Geräte neu**“ zu sagen (oder in
-> der Alexa-App auf „Geräte hinzufügen“ zu tippen).
+> 🔛 **Alexa-Schalter (An/Aus):** Verbinde den Ausgang **„Ein“** mit den Aktionen fürs Einschalten und **„Aus“** mit denen fürs Ausschalten (wer nur eine Richtung braucht, lässt den anderen frei). Beim Klick auf „Deploy“ legt FlowCraft **automatisch** einen echten `input_boolean`-Helfer mit dem eingegebenen Namen an, gibt **nur diesen Helfer** für Alexa frei (Alexa behandelt ihn als normalen Schalter, daher funktioniert „Alexa, schalte **Morgenlicht an/aus**“ nativ, ohne „aktiviere“) und baut im Hintergrund zwei Skripte sowie eine kleine Hilfs-Automation, die beim Umschalten des Helfers das passende Skript ausführt. Löschst du den Baustein (oder den ganzen Flow), werden Helfer, Skripte, Hilfs-Automation und Alexa-Freigabe automatisch wieder entfernt – es bleiben keine verwaisten Einträge zurück. Taucht ein neuer Schalter nach ein paar Minuten ausnahmsweise nicht bei Alexa auf, hilft einmalig „**Alexa, entdecke Geräte neu**“.
 
 ### 4.2 Bedingungen (Falls) – lässt den Ablauf nur unter bestimmten Umständen weiterlaufen
 
@@ -209,14 +181,14 @@ einfach nichts.
 
 ## 5. Mehrere Flows, aktivieren/deaktivieren, löschen
 
-- Jeder Flow entspricht später **einer** HA-Automation (oder einem Skript
-  bei Alexa-Sprachbefehlen). Du kannst beliebig viele Flows anlegen und im
+- Jeder Flow entspricht später **einer** HA-Automation (beim Alexa-Schalter: zwei
+  Skripte plus Helfer). Du kannst beliebig viele Flows anlegen und im
   Dropdown oben zwischen ihnen wechseln.
 - Die Checkbox **„aktiv“** entspricht dem Ein/Aus-Schalter der Automation in
   Home Assistant – ein inaktiver Flow wird zwar deployt, aber nicht
   ausgeführt.
 - **„Flow löschen“** entfernt sowohl den Flow in der Karte als auch die
-  dazugehörige Automation bzw. Alexa-Skripte in Home Assistant (falls
+  dazugehörige Automation bzw. beim Alexa-Schalter Helfer, Skripte und Hilfs-Automation in Home Assistant (falls
   bereits deployt).
 - Änderungen an einem Flow werden automatisch zwischengespeichert, sobald du
   etwas änderst – erst **„Deploy“** überträgt sie aber tatsächlich als
@@ -266,7 +238,7 @@ einfach keine auswählbaren Entitäten:
 | Skript ausführen | Mindestens ein bereits vorhandenes Skript (`script.*`) |
 | Push-Benachrichtigung | Die Home-Assistant-Companion-App auf mindestens einem Smartphone, verbunden mit deiner HA-Instanz (liefert die `notify.mobile_app_…`-Dienste) |
 | Wert setzen | Ein passender Helfer (`input_number`, `input_text`, `input_select`, `input_boolean`) oder eine `number`-Entität – Helfer legst du unter „Einstellungen → Geräte & Dienste → Helfer“ an |
-| **Alexa-Sprachbefehl** | Home Assistant muss mit Alexa verbunden sein, am einfachsten über **Home Assistant Cloud (Nabu Casa)**. Die Freigabe des Skripts bei Alexa übernimmt FlowCraft automatisch bei jedem Deploy; das neue Skript taucht danach normalerweise von selbst bei Alexa auf. Alternativ die manuelle **Alexa Smart Home Skill** (ohne Nabu Casa, technisch aufwendiger). |
+| **Alexa-Schalter (An/Aus)** | Home Assistant muss mit Alexa verbunden sein, am einfachsten über **Home Assistant Cloud (Nabu Casa)**. Den Schalter-Helfer legt FlowCraft selbst an und gibt ihn bei jedem Deploy automatisch für Alexa frei; er taucht danach normalerweise von selbst bei Alexa auf. Alternativ die manuelle **Alexa Smart Home Skill** (ohne Nabu Casa, technisch aufwendiger). |
 
 **Kurz gesagt:** Fehlt die passende Integration/Hardware für einen
 Baustein, taucht im Auswahlfeld einfach kein passender Eintrag auf, bzw.
@@ -295,6 +267,6 @@ einbinden.
 
 ---
 
-*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.39. Bei neuen
+*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.44. Bei neuen
 Versionen mit neuen Bausteinen oder Funktionen wird sie entsprechend
 aktualisiert. Änderungen siehe [CHANGELOG.md](CHANGELOG.md).*

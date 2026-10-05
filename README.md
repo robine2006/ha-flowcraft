@@ -2,7 +2,7 @@
 
 *[Deutsche Anleitung lesen](README.de.md)*
 
-A visual, Node-RED-style flow editor for Home Assistant, built as a single Lovelace custom card. Design your automation logic on a canvas — drag triggers, conditions and actions, wire them together — and FlowCraft compiles it into a native Home Assistant automation (or, for Alexa voice commands, a native HA script). No YAML required, and nothing runs through a separate add-on: the compiled result is a plain automation/script that lives entirely in your own Home Assistant configuration.
+A visual, Node-RED-style flow editor for Home Assistant, built as a single Lovelace custom card. Design your automation logic on a canvas — drag triggers, conditions and actions, wire them together — and FlowCraft compiles it into a native Home Assistant automation (or, for Alexa switches, native HA scripts plus a helper). No YAML required, and nothing runs through a separate add-on: the compiled result is a plain automation/script that lives entirely in your own Home Assistant configuration.
 
 ## Features
 
@@ -12,7 +12,7 @@ A visual, Node-RED-style flow editor for Home Assistant, built as a single Lovel
 - One-click test run of an already-deployed flow
 - Integration filter: choose which integrations' entities show up in the pickers, so large installations stay manageable
 - Copy/paste, multi-select, undo (Ctrl+Z/C/V)
-- Voice commands: a dedicated trigger type compiles to a standalone HA script that Alexa can call directly by name
+- Alexa switch: a dedicated trigger with an "On" and an "Off" output — say "Alexa, turn <name> on/off" natively, no "activate" needed
 - Automatic detection of which node types are usable, based on what entities/integrations your installation actually has
 
 ## Installation
@@ -62,11 +62,11 @@ The card takes up the full available height and needs no further configuration �
 | 🔘 Button/remote | Fires on a button-press event entity (e.g. a Zigbee remote) | event entity, event type |
 | 📍 Zone enter/leave | Fires when a person enters/leaves a zone | person, zone, event |
 | 📆 Calendar event | Fires when a calendar event starts/ends (optionally filtered by title) | calendar, event, offset, title filter |
-| 🗣️ Alexa voice command | Produces **no** automation trigger — instead a standalone HA **script** that Alexa can call directly by name | name for Alexa (e.g. "Bedroom light on") |
+| 🔛 Alexa switch (On/Off) | Two outputs: **On** (top) holds the actions for switching on, **Off** (bottom) the actions for switching off. See the note below. | name for Alexa (e.g. "Morning light") |
 
 A flow can contain several trigger nodes at once — each fires the flow (or its own branch) independently.
 
-> ⚠️ **Alexa voice command has no on/off state of its own.** The generated script always runs its connected action chain exactly once, top to bottom. Home Assistant reports a script to Alexa as a scene, and a scene can only be *activated*, never turned off — so "Alexa, turn off X" gets acknowledged by Alexa but triggers nothing in Home Assistant. For real on/off control by voice, add two separate Alexa voice command nodes with different names (e.g. "Bedroom light on" → turn on, "Bedroom light off" → turn off). FlowCraft automatically exposes/un-exposes each script to Alexa on deploy/delete — no manual toggle needed under Settings → Voice assistants → Alexa.
+> 🔛 **Alexa switch (On/Off).** Connect the **On** output to the actions that should run when switched on, and the **Off** output to the ones for switching off (leave one empty if you only need one direction). On deploy FlowCraft automatically creates a real `input_boolean` helper with that name, exposes **only the helper** to Alexa (Alexa treats it as a normal switch, so "Alexa, turn Morning light on/off" works natively), and builds two scripts plus a small helper automation that runs the matching script when the helper toggles. Deleting the node or the flow removes the helper, scripts, automation and the Alexa exposure again. If a newly created switch does not show up in Alexa after a few minutes, say "Alexa, discover devices" once.
 
 ### Conditions ("Falls")
 
@@ -126,7 +126,7 @@ FlowCraft itself needs nothing beyond installation — it only uses Home Assista
 | Run script | At least one existing script (`script.*`) |
 | Push notification | The Home Assistant Companion App on at least one phone, connected to your instance (provides the `notify.mobile_app_…` services) |
 | Set value | A matching helper (`input_number`, `input_text`, `input_select`, `input_boolean`) or a `number` entity — create helpers under Settings → Devices & Services → Helpers |
-| Alexa voice command | Home Assistant connected to Alexa, most easily via **Home Assistant Cloud (Nabu Casa)**. FlowCraft handles exposing the script to Alexa automatically on every deploy. |
+| Alexa switch | Home Assistant connected to Alexa, most easily via **Home Assistant Cloud (Nabu Casa)**. FlowCraft creates the helper and exposes it to Alexa automatically on every deploy. |
 
 If the required integration/hardware is missing, the affected node simply shows no matching entities, or appears greyed out with a ⚠ in the palette.
 
