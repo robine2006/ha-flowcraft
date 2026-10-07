@@ -270,6 +270,6 @@ einbinden.
 
 ---
 
-*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.46. Bei neuen
+*Diese Anleitung bezieht sich auf FlowCraft Version 0.9.47. Bei neuen
 Versionen mit neuen Bausteinen oder Funktionen wird sie entsprechend
 aktualisiert. Änderungen siehe [CHANGELOG.md](CHANGELOG.md).*

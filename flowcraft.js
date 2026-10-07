@@ -1,7 +1,7 @@
 // ============================================================
 // FlowCraft - a Node-RED-style visual flow editor for Home Assistant
 // https://github.com/robine2006/ha-flowcraft
-// Version: 0.9.46
+// Version: 0.9.47
 // License: MIT (see LICENSE)
 // Full changelog: see CHANGELOG.md
 // ============================================================
@@ -34,7 +34,7 @@ const offs = (m) => {
 const hm = (s) => (s && /^\d{1,2}:\d{2}/.test(s) ? s.slice(0, 5).padStart(5, '0') + ':00' : undefined);
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ''));
 const DAYS = [['mon', 'Mo'], ['tue', 'Di'], ['wed', 'Mi'], ['thu', 'Do'], ['fri', 'Fr'], ['sat', 'Sa'], ['sun', 'So']];
-const VERSION = '0.9.46';
+const VERSION = '0.9.47';
 const DEFAULT_PLATFORMS = ['matter', 'homematicip_local'];
 const PLATFORMS_KEY = 'flowcraft_platforms';
 const VERSION_ENTITY = 'input_text.flowcraft_version';
@@ -450,6 +450,15 @@ function compileFlow(flow) {
       if (no.length) return [{ if: [{ condition: 'not', conditions: [cond] }], then: no }];
       return [];
     }
+    if (t.multi) {
+      const acts = [].concat(t.act(c));
+      const main = seq(outs(n.id, 0), p);
+      const per = (c.entities || []).map((e, i) => seq(outs(n.id, i + 1), p)).filter((b) => b.length);
+      if (!per.length) return acts.concat(main);
+      const par = per.map((b) => ({ sequence: b }));
+      if (main.length) par.push({ sequence: main });
+      return acts.concat([{ parallel: par }]);
+    }
     return [].concat(t.act(c)).concat(seq(outs(n.id, 0), p));
   };
   const buildSteps = (tr) => {
@@ -497,8 +506,13 @@ function compileFlow(flow) {
       mode: hasDelay ? 'restart' : 'single',
     };
   }
-  const switches = switchBranches.map((b) => {
+  const switches = switchBranches.map((b0) => {
+    let b = b0;
     const name = (b.tr.cfg || {}).name || 'Alexa-Schalter';
+    const fixOp = (x, op) => Array.isArray(x) ? x.map((y) => fixOp(y, op))
+      : (x && typeof x === 'object') ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, (k === 'action' && typeof v === 'string' && /\.toggle$/.test(v)) ? v.replace(/toggle$/, op) : fixOp(v, op)]))
+      : x;
+    b = { ...b, onSteps: fixOp(b.onSteps, 'turn_on'), offSteps: fixOp(b.offSteps, 'turn_off') };
     return {
       nodeId: b.tr.id,
       name,
@@ -601,7 +615,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const NW = 220;
 const catGap = (n) => 16;
 const multiOf = (n) => (T[n.type] && T[n.type].multi ? (Array.isArray(n.cfg && n.cfg.entities) ? n.cfg.entities : []) : null);
-const nhBase = (n) => { const m = multiOf(n); return m ? 28 + catGap(n) * (1 + Math.max(1, m.length)) : 28 + catGap(n) * 2; };
+const nhBase = (n) => { const m = multiOf(n); return m ? 28 + catGap(n) * (2 + Math.max(1, m.length)) : 28 + catGap(n) * 2; };
+const multiPortY = (n, o) => { const g = catGap(n), m = Math.max(1, (multiOf(n) || []).length); return 19 + g + g * (o === 0 ? m + 1 : o) - 4; };
 const nhEntity = (n) => {
   const t = T[n.type];
   if (!t || !n.cfg) return undefined;
@@ -653,6 +668,8 @@ const sampleFlow = () => ({
 });
 const CSS = `
 :host,flowcraft-editor{display:block}
+@keyframes fe-blink{0%,100%{box-shadow:0 0 0 0 rgba(198,40,40,.8);opacity:1}50%{box-shadow:0 0 10px 4px rgba(198,40,40,.6);opacity:.55}}
+.fe-blink{animation:fe-blink 1.1s ease-in-out infinite}
 .fe{display:flex;flex-direction:column;height:calc(100vh - 64px);min-height:520px;color:var(--primary-text-color)}
 .fe .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--divider-color)}
 .fe button,.fe select,.fe input:not([type=checkbox]){font:inherit;padding:6px 10px;border:1px solid var(--divider-color);border-radius:6px;background:var(--card-background-color);color:var(--primary-text-color)}
@@ -761,6 +778,9 @@ class FlowCraftEditor extends HTMLElement {
     if (st && st.attributes.last_triggered) parts.push('zuletzt ausgeloest ' + new Date(st.attributes.last_triggered).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
     const miss = f.nodes.reduce((a, n) => a + this._missing(n).length, 0);
     if (miss) { parts.push(`⚠ ${miss} fehlende Entitaet(en)`); cls += ' warn'; }
+    const need = !f.deployedSig || f.deployedSig !== this._sig(f);
+    const db = this.querySelector('#bDeploy');
+    if (db) { const col = need ? '#c62828' : '#2e7d32'; db.style.background = col; db.style.borderColor = col; db.style.color = '#fff'; db.classList.toggle('fe-blink', need); db.title = need ? 'Deploy erforderlich (neu oder geaendert)' : 'Kein Deploy erforderlich - alles aktuell'; }
     el.className = cls; el.textContent = parts.join(' · ');
   }
   _export() {
@@ -853,7 +873,7 @@ class FlowCraftEditor extends HTMLElement {
     this._el.ins.addEventListener('input', (e) => this._field(e));
     this._el.ins.addEventListener('change', (e) => this._field(e));
     this._el.ins.addEventListener('focusin', (e) => { if (e.target.matches('[data-k],[data-day],[data-devop],[data-devbri]')) this._snapshot(); });
-    this._el.ins.addEventListener('click', (e) => { const rm = e.target.closest('[data-rmk]'); if (rm) { this._snapshot(); const n = this._flow.nodes.find((k) => k.id === this._sel); const arr = n && n.cfg[rm.dataset.rmk]; if (arr) { const gone = arr.splice(Number(rm.dataset.i), 1)[0]; if (n.cfg.dev && gone) delete n.cfg.dev[gone]; this._save(); this._render(); this._renderIns(); } return; } if (e.target.id === 'delNode') { if (this._selSet.size > 1) this._removeSelected(); else this._removeNode(this._sel); } });
+    this._el.ins.addEventListener('click', (e) => { const rm = e.target.closest('[data-rmk]'); if (rm) { this._snapshot(); const n = this._flow.nodes.find((k) => k.id === this._sel); const arr = n && n.cfg[rm.dataset.rmk]; if (arr) { const ri = Number(rm.dataset.i), gone = arr.splice(ri, 1)[0]; if (n.cfg.dev && gone) delete n.cfg.dev[gone]; if (T[n.type] && T[n.type].multi) { const fw = this._flow; fw.wires = fw.wires.filter((w) => !(w.from === n.id && (w.out || 0) === ri + 1)); fw.wires.forEach((w) => { if (w.from === n.id && (w.out || 0) > ri + 1) w.out = w.out - 1; }); } this._save(); this._render(); this._renderIns(); } return; } if (e.target.id === 'delNode') { if (this._selSet.size > 1) this._removeSelected(); else this._removeNode(this._sel); } });
   }
   disconnectedCallback() {
     window.removeEventListener('pointermove', this._mv); window.removeEventListener('pointerup', this._up); window.removeEventListener('keydown', this._key);
@@ -1083,7 +1103,7 @@ class FlowCraftEditor extends HTMLElement {
     this._activeNodeId = null; this._activePrevId = null;
     this._render(); this._renderIns();
   }
-  _outPos(n, o) { const h = nh(n), t = T[n.type]; return [n.x + NW, n.y + (t && (t.cat === 'cond' || t.twoOut) ? [h * 0.3, h * 0.7][o] : h / 2)]; }
+  _outPos(n, o) { const h = nh(n), t = T[n.type]; if (t && t.multi) return [n.x + NW, n.y + multiPortY(n, o)]; return [n.x + NW, n.y + (t && (t.cat === 'cond' || t.twoOut) ? [h * 0.3, h * 0.7][o] : h / 2)]; }
   _friendly(id) {
     if (!id) return '';
     const s = this._hass && this._hass.states[id];
@@ -1097,6 +1117,23 @@ class FlowCraftEditor extends HTMLElement {
     const lbl = Object.prototype.hasOwnProperty.call(LABELS, s.state) ? LABELS[s.state] : s.state;
     const unit = (s.attributes && s.attributes.unit_of_measurement) || '';
     return unit ? `${lbl} ${unit}` : lbl;
+  }
+  _lastChg(id) {
+    const s = id && this._hass && this._hass.states[id];
+    const t = s && s.last_changed ? new Date(s.last_changed) : null;
+    if (!t || isNaN(t)) return '';
+    const hm = t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return t.toDateString() === new Date().toDateString() ? hm : t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+  }
+  _evInfo(id) {
+    const s = id && this._hass && this._hass.states[id];
+    if (!s || dom(id) !== 'event') return '';
+    const t = new Date(s.state);
+    if (isNaN(t)) return s.state === 'unknown' ? 'noch nie' : String(s.state);
+    const hm = t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const when = t.toDateString() === new Date().toDateString() ? hm : t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+    const ty = s.attributes && s.attributes.event_type;
+    return when + (ty ? ' · ' + ty : '');
   }
   _unit(id) {
     if (!id) return '';
@@ -1141,14 +1178,17 @@ class FlowCraftEditor extends HTMLElement {
         });
         return b;
       };
-      h += `<g class="node${this._selSet.has(n.id) ? ' sel' : ''}${isActive ? ' active' : ''}${miss.length ? ' miss' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})">${miss.length ? `<title>Entitaet nicht gefunden: ${esc(miss.join(', '))}</title>` : ''}
+      h += `<g class="node${this._selSet.has(n.id) ? ' sel' : ''}${isActive ? ' active' : ''}${miss.length ? ' miss' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})">${miss.length ? `<title>Entitaet nicht gefunden: ${esc(miss.join(', '))}</title>` : (ml && ml.length ? `<title>${esc(ml.map((id) => this._friendly(id) + ': ' + (this._actValue(id) || '–') + (this._lastChg(id) ? ' seit ' + this._lastChg(id) : '')).join('\n'))}</title>` : '')}
         <rect class="body" width="${NW}" height="${hh}" rx="7" fill="${t.color}"/>
         <text class="nt" x="10" y="19">${t.icon} ${esc(ttl)}</text>${ml ? mlBody(n, ml, subY1, gap) : `<text class="ns" x="10" y="${subY1}">${esc(subL1)}</text>${subL2 ? `<text class="ns" x="10" y="${subY2}">${esc(subL2)}</text>` : ''}`}`;
-      if (showVal) h += `<text class="nv" x="10" y="${hh - 9}">Aktuell: ${esc(this._actValue(nhEntity(n)) || '–')}</text>`;
+      if (showVal) h += `<text class="nv" x="10" y="${hh - 9}">${dom(nhEntity(n)) === 'event' ? 'Zuletzt: ' + esc(this._evInfo(nhEntity(n)) || '–') : 'Aktuell: ' + esc(this._actValue(nhEntity(n)) || '–') + (this._lastChg(nhEntity(n)) ? ' · seit ' + esc(this._lastChg(nhEntity(n))) : '')}</text>`;
       if (t.cat !== 'trigger') h += `<circle class="port" data-in="${n.id}" cx="0" cy="${hh / 2}" r="6"/>`;
       if (t.cat === 'cond' || t.twoOut) {
         const [l0, l1] = t.outLabels || ['Ja', 'Nein'];
         h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${hh * 0.3}" r="6"/><circle class="port" data-out="${n.id}" data-o="1" cx="${NW}" cy="${hh * 0.7}" r="6"/><text class="plab" text-anchor="end" x="${NW - 12}" y="${hh * 0.3 + 3}">${esc(l0)}</text><text class="plab" text-anchor="end" x="${NW - 12}" y="${hh * 0.7 + 3}">${esc(l1)}</text>`;
+      } else if (ml) {
+        h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${multiPortY(n, 0)}" r="6"/><text class="plab" text-anchor="end" x="${NW - 12}" y="${multiPortY(n, 0) + 3}">danach</text>`;
+        ml.forEach((id, i) => { h += `<circle class="port" data-out="${n.id}" data-o="${i + 1}" cx="${NW}" cy="${multiPortY(n, i + 1)}" r="5"><title>Nur fuer dieses Geraet weiter</title></circle>`; });
       } else h += `<circle class="port" data-out="${n.id}" data-o="0" cx="${NW}" cy="${hh / 2}" r="6"/>`;
       if (miss.length) h += `<text class="wm" x="${NW - 22}" y="19">⚠️</text>`;
       h += '</g>';
@@ -1323,9 +1363,9 @@ class FlowCraftEditor extends HTMLElement {
           h += cur.map((id, i) => {
             const dv = devOf(c, id), dd = (c.dev && c.dev[id]) || {};
             const ops = [['', 'wie Standard'], ['turn_on', 'An'], ['turn_off', 'Aus'], ['toggle', 'Um']];
-            return `<div class="chip" style="flex-wrap:wrap"><span>${esc(this._friendly(id))}${this._hass.states[id] ? '' : ' (nicht gefunden)'}</span><button data-rmk="${fl.k}" data-i="${i}" title="Entfernen">✕</button>`
-              + `<select data-devop="${esc(id)}" style="width:auto">${ops.map(([val, lab]) => `<option value="${val}"${(dd.op || '') === val ? ' selected' : ''}>${lab}</option>`).join('')}</select>`
-              + (dom(id) === 'light' && dv.op === 'turn_on' ? `<input data-devbri="${esc(id)}" type="number" min="0" max="100" placeholder="Helligkeit %" value="${esc(dd.brightness ?? '')}" style="width:110px">` : '') + '</div>';
+            return `<div class="chip" style="flex-direction:column;align-items:stretch;gap:3px;margin:8px 0"><div style="display:flex;align-items:center;gap:4px"><span style="word-break:normal;overflow-wrap:anywhere">${esc(this._friendly(id))}${this._hass.states[id] ? '' : ' (nicht gefunden)'}</span><button data-rmk="${fl.k}" data-i="${i}" title="Entfernen">✕</button></div>`
+              + `<div style="display:flex;gap:4px"><select data-devop="${esc(id)}" style="flex:1;min-width:0;width:auto">${ops.map(([val, lab]) => `<option value="${val}"${(dd.op || '') === val ? ' selected' : ''}>${lab}</option>`).join('')}</select>`
+              + (dom(id) === 'light' && dv.op === 'turn_on' ? `<input data-devbri="${esc(id)}" type="number" min="0" max="100" placeholder="Hell. %" value="${esc(dd.brightness ?? '')}" style="width:80px">` : '') + '</div></div>';
           }).join('');
           h += `<select data-addk="${fl.k}"><option value="">+ Geraet hinzufuegen</option>${optionsHtml}</select>${note}`;
         } else h += `<select data-k="${fl.k}"><option value="">- waehlen -</option>${optionsHtml}</select>${note}<div class="hint" data-hint="${fl.k}">${this._hintFor(v)}</div>`;
@@ -1346,7 +1386,7 @@ class FlowCraftEditor extends HTMLElement {
   _hintFor(id) {
     const s = this._hass.states[id]; if (!s) return '';
     const a = s.attributes || {};
-    let h = `${esc(a.friendly_name || id)} - aktuell: ${esc(s.state)}${a.unit_of_measurement ? ' ' + esc(a.unit_of_measurement) : ''}`;
+    let h = `${esc(a.friendly_name || id)} - ${dom(id) === 'event' ? 'zuletzt: ' + esc(this._evInfo(id)) : 'aktuell: ' + esc(s.state)}${a.unit_of_measurement ? ' ' + esc(a.unit_of_measurement) : ''}`;
     const badge = this._integrationLabel(id);
     if (badge) h += ` | Integration: ${esc(badge)}`;
     const area = this._areaLabel(id);
@@ -1452,10 +1492,10 @@ class FlowCraftEditor extends HTMLElement {
           alias: 'FlowCraft Alexa-Schalter: ' + sw.name,
           description: 'Erzeugt von FlowCraft (Alexa-Schalter-Node). Aenderungen bitte in FlowCraft machen, sie werden beim naechsten Deploy ueberschrieben.',
           triggers: [
-            { trigger: 'state', entity_id: helperId, to: 'on', id: 'on' },
-            { trigger: 'state', entity_id: helperId, to: 'off', id: 'off' },
+            { trigger: 'event', event_type: 'call_service', event_data: { domain: 'input_boolean', service: 'turn_on' }, id: 'on' },
+            { trigger: 'event', event_type: 'call_service', event_data: { domain: 'input_boolean', service: 'turn_off' }, id: 'off' },
           ],
-          conditions: [],
+          conditions: [{ condition: 'template', value_template: "{% set d = trigger.event.data.service_data.entity_id | default([], true) %}{{ '" + helperId + "' in ([d] if d is string else d) }}" }],
           actions: [{ choose: [
             { conditions: [{ condition: 'trigger', id: 'on' }], sequence: [{ action: 'script.turn_on', target: { entity_id: 'script.' + sw.onScript.id } }] },
             { conditions: [{ condition: 'trigger', id: 'off' }], sequence: [{ action: 'script.turn_on', target: { entity_id: 'script.' + sw.offScript.id } }] },
@@ -1531,6 +1571,7 @@ class FlowCraftEditor extends HTMLElement {
       return [{ id: n.id, text: line }, ...this._outsTrace(n.id, res.ok ? 0 : 1, p)];
     }
     const act = t.act(c);
+    if (t.multi) { const extra = (c.entities || []).flatMap((e, i) => this._outsTrace(n.id, i + 1, p)); return [{ id: n.id, text: `${t.icon} ${t.label} (${subFlat(t, c, L)}) — wuerde ausgefuehrt [SIMULIERT, nicht gesendet]: ${JSON.stringify(act)}` }, ...extra, ...this._outsTrace(n.id, 0, p)]; }
     return [{ id: n.id, text: `${t.icon} ${t.label} (${subFlat(t, c, L)}) — wuerde ausgefuehrt [SIMULIERT, nicht gesendet]: ${JSON.stringify(act)}` }, ...this._outsTrace(n.id, 0, p)];
   }
   async _simulate() {
