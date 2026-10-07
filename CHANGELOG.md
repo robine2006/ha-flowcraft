@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.47
+## 0.9.57
 - *Switch several devices*: every device now has its own output for follow-up actions that apply only to that device. The bottom output ("danach") continues for everything shared. Existing flows are unchanged.
 - *Switch several devices* also shows the live state and time since the last change for each device; button/event entities show "Last: time · event type".
 - *Alexa switch*: the command is now always sent to all devices regardless of their previous state, and "Toggle" inside the On/Off branches is mapped to On (branch On) or Off (branch Off).

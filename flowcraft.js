@@ -1,7 +1,7 @@
 // ============================================================
 // FlowCraft - a Node-RED-style visual flow editor for Home Assistant
 // https://github.com/robine2006/ha-flowcraft
-// Version: 0.9.47
+// Version: 0.9.57
 // License: MIT (see LICENSE)
 // Full changelog: see CHANGELOG.md
 // ============================================================
@@ -34,7 +34,7 @@ const offs = (m) => {
 const hm = (s) => (s && /^\d{1,2}:\d{2}/.test(s) ? s.slice(0, 5).padStart(5, '0') + ':00' : undefined);
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ''));
 const DAYS = [['mon', 'Mo'], ['tue', 'Di'], ['wed', 'Mi'], ['thu', 'Do'], ['fri', 'Fr'], ['sat', 'Sa'], ['sun', 'So']];
-const VERSION = '0.9.47';
+const VERSION = '0.9.57';
 const DEFAULT_PLATFORMS = ['matter', 'homematicip_local'];
 const PLATFORMS_KEY = 'flowcraft_platforms';
 const VERSION_ENTITY = 'input_text.flowcraft_version';
